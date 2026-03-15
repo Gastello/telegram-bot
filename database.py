@@ -25,9 +25,24 @@ def init_db():
     cur.execute("""
     CREATE TABLE IF NOT EXISTS blocked_games (
         appid TEXT PRIMARY KEY,
-        title TEXT
+        title TEXT,
+        blocked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
     """)
+
+    # migration for old blocked_games table without blocked_at
+    cur.execute("PRAGMA table_info(blocked_games)")
+    blocked_cols = [row["name"] for row in cur.fetchall()]
+    if "blocked_at" not in blocked_cols:
+        cur.execute("""
+        ALTER TABLE blocked_games
+        ADD COLUMN blocked_at TIMESTAMP
+        """)
+        cur.execute("""
+        UPDATE blocked_games
+        SET blocked_at = CURRENT_TIMESTAMP
+        WHERE blocked_at IS NULL
+        """)
 
     cur.execute("""
     CREATE TABLE IF NOT EXISTS translation_cache (
@@ -170,22 +185,25 @@ def block_game(appid: str, title: str):
 
     cur.execute("""
     INSERT OR REPLACE INTO blocked_games
-    (appid, title)
-    VALUES (?, ?)
+    (appid, title, blocked_at)
+    VALUES (?, ?, CURRENT_TIMESTAMP)
     """, (appid, title))
 
     conn.commit()
     conn.close()
 
 
-def unblock_game(appid: str):
+def unblock_game(appid: str) -> bool:
     conn = get_conn()
     cur = conn.cursor()
 
     cur.execute("DELETE FROM blocked_games WHERE appid=?", (appid,))
+    deleted = cur.rowcount > 0
 
     conn.commit()
     conn.close()
+
+    return deleted
 
 
 def is_game_blocked(appid: str) -> bool:
@@ -203,20 +221,41 @@ def is_game_blocked(appid: str) -> bool:
     return bool(row)
 
 
-def list_blocked_games() -> list[dict]:
+def list_blocked_games(limit: int = 100) -> list[dict]:
     conn = get_conn()
     cur = conn.cursor()
 
     cur.execute("""
-    SELECT appid, title
+    SELECT appid, title, blocked_at
     FROM blocked_games
-    ORDER BY LOWER(title), appid
-    """)
+    ORDER BY datetime(blocked_at) DESC, LOWER(title), appid
+    LIMIT ?
+    """, (limit,))
 
     rows = cur.fetchall()
     conn.close()
 
     return [dict(row) for row in rows]
+
+
+def get_last_blocked_game() -> dict | None:
+    conn = get_conn()
+    cur = conn.cursor()
+
+    cur.execute("""
+    SELECT appid, title, blocked_at
+    FROM blocked_games
+    ORDER BY datetime(blocked_at) DESC
+    LIMIT 1
+    """)
+
+    row = cur.fetchone()
+    conn.close()
+
+    if not row:
+        return None
+
+    return dict(row)
 
 
 # ------------------------------------------------

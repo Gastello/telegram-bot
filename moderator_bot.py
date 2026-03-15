@@ -4,6 +4,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     ApplicationBuilder,
     CallbackQueryHandler,
+    CommandHandler,
     ContextTypes,
     MessageHandler,
     filters,
@@ -11,16 +12,20 @@ from telegram.ext import (
 
 from config import BOT_TOKEN, CHANNEL_ID
 from database import (
+    init_db,
     block_game,
     clear_upload_request_message_id,
     delete_moderation_messages_records,
+    get_last_blocked_game,
     get_moderation_item,
     get_moderation_item_by_upload_request_message_id,
     get_moderation_messages,
+    list_blocked_games,
     register_moderation_message,
     set_preview_message_id,
     set_selected_image,
     set_upload_request_message_id,
+    unblock_game,
     update_moderation_state,
     update_moderation_status,
 )
@@ -45,6 +50,22 @@ def build_final_preview_keyboard(moderation_id: int) -> InlineKeyboardMarkup:
             InlineKeyboardButton("🚫 Block game", callback_data=f"block|{moderation_id}"),
         ],
     ])
+
+
+def build_unblock_keyboard(appid: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("🔓 Unblock", callback_data=f"unblock_game|{appid}")]
+    ])
+
+
+def build_help_text() -> str:
+    return (
+        "Доступні команди:\n\n"
+        "/blacklist — показати чорний список\n"
+        "/block APPID — заблокувати гру по appid\n"
+        "/unblock APPID — розблокувати гру по appid\n"
+        "/unblock_last — розблокувати останню заблоковану гру"
+    )
 
 
 async def send_status_log(
@@ -131,6 +152,85 @@ async def send_final_preview(
     register_moderation_message(item["id"], chat_id, sent.message_id, "preview")
 
 
+async def blacklist_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    chat = update.effective_chat
+    if not chat:
+        return
+
+    blocked = list_blocked_games(limit=50)
+
+    if not blocked:
+        await context.bot.send_message(
+            chat_id=chat.id,
+            text="📭 Чорний список порожній.\nЖодна гра ще не заблокована."
+        )
+        return
+
+    await context.bot.send_message(
+        chat_id=chat.id,
+        text=f"🚫 У чорному списку: {len(blocked)} ігор"
+    )
+
+    for item in blocked:
+        text = f"🎮 {item['title']}\nappid: {item['appid']}"
+        await context.bot.send_message(
+            chat_id=chat.id,
+            text=text,
+            reply_markup=build_unblock_keyboard(item["appid"]),
+        )
+
+
+async def block_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not context.args:
+        await update.effective_message.reply_text("Використання: /block APPID")
+        return
+
+    appid = context.args[0].strip()
+
+    block_game(appid, "")
+    await update.effective_message.reply_text(f"🚫 Заблоковано гру з appid {appid}")
+
+
+async def unblock_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not context.args:
+        await update.effective_message.reply_text("Використання: /unblock APPID")
+        return
+
+    appid = context.args[0].strip()
+
+    if unblock_game(appid):
+        await update.effective_message.reply_text(f"🔓 Розблоковано гру з appid {appid}")
+    else:
+        await update.effective_message.reply_text(f"Гру з appid {appid} не знайдено в чорному списку.")
+
+
+async def unblock_last_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    item = get_last_blocked_game()
+    if not item:
+        await update.effective_message.reply_text("📭 Чорний список порожній.")
+        return
+
+    if unblock_game(item["appid"]):
+        await update.effective_message.reply_text(
+            f"🔓 Розблоковано останню гру:\n🎮 {item['title']}\nappid: {item['appid']}"
+        )
+    else:
+        await update.effective_message.reply_text("Не вдалося розблокувати останню гру.")
+
+
+async def help_fallback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    message = update.effective_message
+    chat = update.effective_chat
+
+    if not message or not chat:
+        return
+
+    await context.bot.send_message(
+        chat_id=chat.id,
+        text=build_help_text(),
+    )
+
+
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
     if not query:
@@ -141,11 +241,27 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     raw_data = query.data or ""
     parts = raw_data.split("|")
 
-    if len(parts) < 2:
-        await _safe_edit_status(query, f"⚠️ Bad callback data: {raw_data}")
+    if not parts:
+        await _safe_edit_status(query, "⚠️ Bad callback data")
         return
 
     action = parts[0]
+
+    if action == "unblock_game":
+        if len(parts) < 2:
+            await _safe_edit_status(query, "⚠️ No appid for unblock")
+            return
+
+        appid = parts[1].strip()
+        if unblock_game(appid):
+            await _safe_edit_status(query, f"🔓 Unblocked appid {appid}")
+        else:
+            await _safe_edit_status(query, f"⚠️ appid {appid} not found in blacklist")
+        return
+
+    if len(parts) < 2:
+        await _safe_edit_status(query, f"⚠️ Bad callback data: {raw_data}")
+        return
 
     try:
         moderation_id = int(parts[1])
@@ -271,37 +387,21 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 async def upload_image_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     message = update.effective_message
 
-    print("[UPLOAD DEBUG] handler triggered")
-    print("[UPLOAD DEBUG] effective_message exists:", bool(message))
-    print("[UPLOAD DEBUG] message_id:", message.message_id if message else None)
-    print("[UPLOAD DEBUG] has_photo:", bool(message.photo) if message else None)
-    print("[UPLOAD DEBUG] has_document:", bool(message.document) if message else None)
-    print(
-        "[UPLOAD DEBUG] reply_to_message_id:",
-        message.reply_to_message.message_id if message and message.reply_to_message else None,
-    )
-
     if not message:
-        print("[UPLOAD DEBUG] skipped: no effective_message")
         return
 
     if not message.reply_to_message:
-        print("[UPLOAD DEBUG] skipped: no reply")
         return
 
     reply_message_id = message.reply_to_message.message_id
     item = get_moderation_item_by_upload_request_message_id(reply_message_id)
 
-    print("[UPLOAD DEBUG] matched moderation item:", item["id"] if item else None)
-
     if not item:
-        print("[UPLOAD DEBUG] skipped: no matching moderation item")
         return
 
     current_state = (item.get("state") or "").strip()
     current_status = (item.get("status") or "").strip()
     if current_state in TERMINAL_STATES or current_status in TERMINAL_STATES:
-        print("[UPLOAD DEBUG] skipped: moderation already finished")
         return
 
     photo_file = None
@@ -311,31 +411,25 @@ async def upload_image_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         photo = message.photo[-1]
         photo_file = await photo.get_file()
         ext = "jpg"
-        print("[UPLOAD DEBUG] using telegram photo")
 
     elif message.document:
         mime_type = message.document.mime_type or ""
-        print("[UPLOAD DEBUG] document mime:", mime_type)
 
         if mime_type.startswith("image/"):
             photo_file = await message.document.get_file()
             filename = message.document.file_name or ""
             if "." in filename:
                 ext = filename.rsplit(".", 1)[-1].lower()
-            print("[UPLOAD DEBUG] using image document")
         else:
             await message.reply_text("⚠️ Надішли саме фото або image-файл.")
-            print("[UPLOAD DEBUG] skipped: document is not image")
             return
     else:
         await message.reply_text("⚠️ Надішли саме фото або image-файл.")
-        print("[UPLOAD DEBUG] skipped: no photo/document")
         return
 
     register_moderation_message(item["id"], message.chat_id, message.message_id, "user_upload")
 
     custom_upload_path = get_custom_upload_path(item["title"], item["appid"], ext)
-    print("[UPLOAD DEBUG] saving upload to:", custom_upload_path)
 
     await photo_file.download_to_drive(custom_upload_path)
 
@@ -350,9 +444,7 @@ async def upload_image_handler(update: Update, context: ContextTypes.DEFAULT_TYP
             custom_background_path=custom_upload_path,
             output_path=get_generated_image_path(item["title"], item["appid"], "custom"),
         )
-        print("[UPLOAD DEBUG] generated custom preview:", final_custom_path)
     except Exception as error:
-        print("[UPLOAD DEBUG] generation error:", error)
         await message.reply_text(f"⚠️ Не вдалося обробити кастомне фото: {error}")
         return
 
@@ -372,13 +464,27 @@ async def upload_image_handler(update: Update, context: ContextTypes.DEFAULT_TYP
 
 
 def run_bot() -> None:
+    init_db()
+
     app = ApplicationBuilder().token(BOT_TOKEN).build()
+
+    app.add_handler(CommandHandler("blacklist", blacklist_command))
+    app.add_handler(CommandHandler("block", block_command))
+    app.add_handler(CommandHandler("unblock", unblock_command))
+    app.add_handler(CommandHandler("unblock_last", unblock_last_command))
 
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(
         MessageHandler(
             (filters.PHOTO | filters.Document.IMAGE),
             upload_image_handler,
+        )
+    )
+
+    app.add_handler(
+        MessageHandler(
+            filters.TEXT & ~filters.COMMAND,
+            help_fallback_handler,
         )
     )
 

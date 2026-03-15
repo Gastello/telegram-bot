@@ -16,6 +16,12 @@ from image_generator import (
     get_generated_image_path,
 )
 
+# Підняті таймаути, щоб не ловити фальшиві TimedOut
+TG_CONNECT_TIMEOUT = 20
+TG_READ_TIMEOUT = 60
+TG_WRITE_TIMEOUT = 60
+TG_POOL_TIMEOUT = 20
+
 
 async def safe_send_photo(
     bot: Bot,
@@ -30,18 +36,25 @@ async def safe_send_photo(
         try:
             bio = BytesIO(photo_bytes)
             bio.name = filename
+
             return await bot.send_photo(
                 chat_id=chat_id,
                 photo=bio,
                 caption=caption,
                 reply_markup=reply_markup,
+                connect_timeout=TG_CONNECT_TIMEOUT,
+                read_timeout=TG_READ_TIMEOUT,
+                write_timeout=TG_WRITE_TIMEOUT,
+                pool_timeout=TG_POOL_TIMEOUT,
             )
+
         except RetryAfter as error:
             wait_time = int(getattr(error, "retry_after", 5)) + 1
             print(f"[TG RETRY] send_photo retry after {wait_time}s")
             await asyncio.sleep(wait_time)
+
         except TimedOut:
-            wait_time = 3 * (attempt + 1)
+            wait_time = 5 * (attempt + 1)
             print(f"[TG RETRY] send_photo timed out, retry in {wait_time}s")
             await asyncio.sleep(wait_time)
 
@@ -51,13 +64,19 @@ async def safe_send_photo(
 async def safe_send_message(bot: Bot, **kwargs):
     for attempt in range(4):
         try:
-            return await bot.send_message(**kwargs)
+            return await bot.send_message(
+                **kwargs,
+                connect_timeout=TG_CONNECT_TIMEOUT,
+                read_timeout=TG_READ_TIMEOUT,
+                write_timeout=TG_WRITE_TIMEOUT,
+                pool_timeout=TG_POOL_TIMEOUT,
+            )
         except RetryAfter as error:
             wait_time = int(getattr(error, "retry_after", 5)) + 1
             print(f"[TG RETRY] send_message retry after {wait_time}s")
             await asyncio.sleep(wait_time)
         except TimedOut:
-            wait_time = 3 * (attempt + 1)
+            wait_time = 5 * (attempt + 1)
             print(f"[TG RETRY] send_message timed out, retry in {wait_time}s")
             await asyncio.sleep(wait_time)
 
@@ -111,7 +130,6 @@ async def _send_to_moderation_async(deal: dict) -> None:
 
     generated_variants: list[dict] = []
 
-    # Спочатку генеруємо всі доступні варіанти
     for variant_key, source_type in VARIANT_SOURCE_MAP.items():
         image_path = None
 
@@ -152,7 +170,6 @@ async def _send_to_moderation_async(deal: dict) -> None:
 
     single_variant = len(generated_variants) == 1
 
-    # Надсилаємо фото
     for item in generated_variants:
         variant_key = item["variant_key"]
         image_path = item["image_path"]
@@ -182,9 +199,8 @@ async def _send_to_moderation_async(deal: dict) -> None:
             f"variant_{variant_key}",
         )
 
-        await asyncio.sleep(0.6)
+        await asyncio.sleep(1.0)
 
-    # Якщо варіантів кілька — шлемо окрему control panel
     if not single_variant:
         control_text = (
             f"{deal['title']}\n"

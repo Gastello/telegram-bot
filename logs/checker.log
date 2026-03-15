@@ -1,0 +1,116 @@
+2026-03-15 22:23:09,569 | INFO | [TEST MODE] csv=test_games.csv candidates=10
+2026-03-15 22:23:09,569 | INFO | [TEST MODE] candidates=10
+2026-03-15 22:23:12,728 | INFO | [NEW] Ultimate Fishing Simulator® | -95% | 20.0 UAH | rating=89.38% | reviews=8627 | sale_end=16 березня
+2026-03-15 22:23:15,853 | INFO | [NEW] 100% Orange Juice | -85% | 24.0 UAH | rating=91.23% | reviews=29665 | sale_end=16 березня
+2026-03-15 22:23:18,434 | INFO | [NEW] Little Nightmares | -75% | 162.0 UAH | rating=94.74% | reviews=114885 | sale_end=19 березня
+2026-03-15 22:23:21,117 | INFO | [NEW] Victoria 3 | -70% | 404.0 UAH | rating=70.54% | reviews=57916 | sale_end=19 березня
+2026-03-15 22:23:23,971 | INFO | [NEW] DG2: Defense Grid 2 | -62% | 85.0 UAH | rating=86.42% | reviews=3306 | sale_end=16 березня
+2026-03-15 22:23:26,368 | INFO | [NEW] NieR:Automata™ | -60% | 186.0 UAH | rating=87.3% | reviews=148613 | sale_end=19 березня
+2026-03-15 22:23:29,148 | INFO | [NEW] The Age of Decadence | -60% | 130.0 UAH | rating=82.22% | reviews=3936 | sale_end=16 березня
+2026-03-15 22:23:31,982 | INFO | [NEW] Acceleration of SUGURI 2 | -50% | 103.0 UAH | rating=78.28% | reviews=1243 | sale_end=16 березня
+2026-03-15 22:23:34,489 | INFO | [NEW] Serious Sam II | -75% | 56.0 UAH | rating=89.83% | reviews=13622 | sale_end=19 березня
+2026-03-15 22:23:35,166 | INFO | [SKIP] American Truck Simulator | discount 0% < 50%
+2026-03-15 22:23:39,308 | INFO | HTTP Request: POST https://api.telegram.org/bot8796502754:AAED-jY-FVhmPCTU1SyTyWp7AmVbOpngWyI/sendPhoto "HTTP/1.1 200 OK"
+2026-03-15 22:23:40,197 | INFO | HTTP Request: POST https://api.telegram.org/bot8796502754:AAED-jY-FVhmPCTU1SyTyWp7AmVbOpngWyI/sendPhoto "HTTP/1.1 200 OK"
+2026-03-15 22:23:41,088 | INFO | HTTP Request: POST https://api.telegram.org/bot8796502754:AAED-jY-FVhmPCTU1SyTyWp7AmVbOpngWyI/sendPhoto "HTTP/1.1 200 OK"
+2026-03-15 22:23:41,831 | INFO | HTTP Request: POST https://api.telegram.org/bot8796502754:AAED-jY-FVhmPCTU1SyTyWp7AmVbOpngWyI/sendMessage "HTTP/1.1 200 OK"
+2026-03-15 22:23:46,690 | INFO | HTTP Request: POST https://api.telegram.org/bot8796502754:AAED-jY-FVhmPCTU1SyTyWp7AmVbOpngWyI/sendPhoto "HTTP/1.1 200 OK"
+2026-03-15 22:23:47,753 | INFO | HTTP Request: POST https://api.telegram.org/bot8796502754:AAED-jY-FVhmPCTU1SyTyWp7AmVbOpngWyI/sendPhoto "HTTP/1.1 200 OK"
+2026-03-15 22:23:48,697 | INFO | HTTP Request: POST https://api.telegram.org/bot8796502754:AAED-jY-FVhmPCTU1SyTyWp7AmVbOpngWyI/sendPhoto "HTTP/1.1 200 OK"
+2026-03-15 22:23:49,439 | INFO | HTTP Request: POST https://api.telegram.org/bot8796502754:AAED-jY-FVhmPCTU1SyTyWp7AmVbOpngWyI/sendMessage "HTTP/1.1 200 OK"
+2026-03-15 22:23:54,058 | INFO | HTTP Request: POST https://api.telegram.org/bot8796502754:AAED-jY-FVhmPCTU1SyTyWp7AmVbOpngWyI/sendPhoto "HTTP/1.1 200 OK"
+2026-03-15 22:23:54,974 | INFO | HTTP Request: POST https://api.telegram.org/bot8796502754:AAED-jY-FVhmPCTU1SyTyWp7AmVbOpngWyI/sendPhoto "HTTP/1.1 200 OK"
+2026-03-15 22:23:55,794 | INFO | HTTP Request: POST https://api.telegram.org/bot8796502754:AAED-jY-FVhmPCTU1SyTyWp7AmVbOpngWyI/sendPhoto "HTTP/1.1 200 OK"
+2026-03-15 22:23:56,501 | INFO | HTTP Request: POST https://api.telegram.org/bot8796502754:AAED-jY-FVhmPCTU1SyTyWp7AmVbOpngWyI/sendMessage "HTTP/1.1 200 OK"
+2026-03-15 22:24:00,264 | INFO | HTTP Request: POST https://api.telegram.org/bot8796502754:AAED-jY-FVhmPCTU1SyTyWp7AmVbOpngWyI/sendPhoto "HTTP/1.1 200 OK"
+2026-03-15 22:24:01,168 | INFO | HTTP Request: POST https://api.telegram.org/bot8796502754:AAED-jY-FVhmPCTU1SyTyWp7AmVbOpngWyI/sendPhoto "HTTP/1.1 200 OK"
+2026-03-15 22:24:01,887 | INFO | HTTP Request: POST https://api.telegram.org/bot8796502754:AAED-jY-FVhmPCTU1SyTyWp7AmVbOpngWyI/sendMessage "HTTP/1.1 200 OK"
+2026-03-15 22:24:15,052 | INFO | HTTP Request: POST https://api.telegram.org/bot8796502754:AAED-jY-FVhmPCTU1SyTyWp7AmVbOpngWyI/sendPhoto "HTTP/1.1 200 OK"
+2026-03-15 22:24:16,016 | INFO | HTTP Request: POST https://api.telegram.org/bot8796502754:AAED-jY-FVhmPCTU1SyTyWp7AmVbOpngWyI/sendPhoto "HTTP/1.1 200 OK"
+2026-03-15 22:24:16,935 | INFO | HTTP Request: POST https://api.telegram.org/bot8796502754:AAED-jY-FVhmPCTU1SyTyWp7AmVbOpngWyI/sendPhoto "HTTP/1.1 200 OK"
+2026-03-15 22:24:17,661 | INFO | HTTP Request: POST https://api.telegram.org/bot8796502754:AAED-jY-FVhmPCTU1SyTyWp7AmVbOpngWyI/sendMessage "HTTP/1.1 200 OK"
+2026-03-15 22:24:22,582 | INFO | HTTP Request: POST https://api.telegram.org/bot8796502754:AAED-jY-FVhmPCTU1SyTyWp7AmVbOpngWyI/sendPhoto "HTTP/1.1 429 Too Many Requests"
+2026-03-15 22:24:40,192 | INFO | HTTP Request: POST https://api.telegram.org/bot8796502754:AAED-jY-FVhmPCTU1SyTyWp7AmVbOpngWyI/sendPhoto "HTTP/1.1 200 OK"
+2026-03-15 22:24:41,085 | INFO | HTTP Request: POST https://api.telegram.org/bot8796502754:AAED-jY-FVhmPCTU1SyTyWp7AmVbOpngWyI/sendPhoto "HTTP/1.1 200 OK"
+2026-03-15 22:24:41,816 | INFO | HTTP Request: POST https://api.telegram.org/bot8796502754:AAED-jY-FVhmPCTU1SyTyWp7AmVbOpngWyI/sendMessage "HTTP/1.1 200 OK"
+2026-03-15 22:24:45,977 | INFO | HTTP Request: POST https://api.telegram.org/bot8796502754:AAED-jY-FVhmPCTU1SyTyWp7AmVbOpngWyI/sendPhoto "HTTP/1.1 200 OK"
+2026-03-15 22:24:46,941 | INFO | HTTP Request: POST https://api.telegram.org/bot8796502754:AAED-jY-FVhmPCTU1SyTyWp7AmVbOpngWyI/sendPhoto "HTTP/1.1 200 OK"
+2026-03-15 22:24:47,886 | INFO | HTTP Request: POST https://api.telegram.org/bot8796502754:AAED-jY-FVhmPCTU1SyTyWp7AmVbOpngWyI/sendPhoto "HTTP/1.1 200 OK"
+2026-03-15 22:24:48,641 | INFO | HTTP Request: POST https://api.telegram.org/bot8796502754:AAED-jY-FVhmPCTU1SyTyWp7AmVbOpngWyI/sendMessage "HTTP/1.1 200 OK"
+2026-03-15 22:24:52,555 | INFO | HTTP Request: POST https://api.telegram.org/bot8796502754:AAED-jY-FVhmPCTU1SyTyWp7AmVbOpngWyI/sendPhoto "HTTP/1.1 200 OK"
+2026-03-15 22:24:53,490 | INFO | HTTP Request: POST https://api.telegram.org/bot8796502754:AAED-jY-FVhmPCTU1SyTyWp7AmVbOpngWyI/sendPhoto "HTTP/1.1 200 OK"
+2026-03-15 22:24:54,198 | INFO | HTTP Request: POST https://api.telegram.org/bot8796502754:AAED-jY-FVhmPCTU1SyTyWp7AmVbOpngWyI/sendMessage "HTTP/1.1 200 OK"
+2026-03-15 22:24:58,376 | INFO | HTTP Request: POST https://api.telegram.org/bot8796502754:AAED-jY-FVhmPCTU1SyTyWp7AmVbOpngWyI/sendPhoto "HTTP/1.1 200 OK"
+2026-03-15 22:24:59,217 | INFO | HTTP Request: POST https://api.telegram.org/bot8796502754:AAED-jY-FVhmPCTU1SyTyWp7AmVbOpngWyI/sendPhoto "HTTP/1.1 200 OK"
+2026-03-15 22:25:00,286 | INFO | HTTP Request: POST https://api.telegram.org/bot8796502754:AAED-jY-FVhmPCTU1SyTyWp7AmVbOpngWyI/sendPhoto "HTTP/1.1 200 OK"
+2026-03-15 22:25:01,001 | INFO | HTTP Request: POST https://api.telegram.org/bot8796502754:AAED-jY-FVhmPCTU1SyTyWp7AmVbOpngWyI/sendMessage "HTTP/1.1 200 OK"
+2026-03-15 23:17:20,161 | INFO | [TEST MODE] csv=test_games.csv candidates=10
+2026-03-15 23:17:20,161 | INFO | [TEST MODE] candidates=10
+2026-03-15 23:17:22,699 | INFO | [OLD] Ultimate Fishing Simulator®
+2026-03-15 23:17:24,972 | INFO | [OLD] 100% Orange Juice
+2026-03-15 23:17:27,086 | INFO | [OLD] Little Nightmares
+2026-03-15 23:17:29,096 | INFO | [OLD] Victoria 3
+2026-03-15 23:17:31,323 | INFO | [OLD] DG2: Defense Grid 2
+2026-03-15 23:17:33,181 | INFO | [OLD] NieR:Automata™
+2026-03-15 23:17:35,137 | INFO | [OLD] The Age of Decadence
+2026-03-15 23:17:37,521 | INFO | [OLD] Acceleration of SUGURI 2
+2026-03-15 23:17:39,458 | INFO | [OLD] Serious Sam II
+2026-03-15 23:17:40,014 | INFO | [SKIP] American Truck Simulator | discount 0% < 50%
+2026-03-15 23:18:46,058 | INFO | [TEST MODE] csv=test_games.csv candidates=10
+2026-03-15 23:18:46,058 | INFO | [TEST MODE] candidates=10
+2026-03-15 23:18:48,537 | INFO | [OLD] Ultimate Fishing Simulator®
+2026-03-15 23:18:50,882 | INFO | [OLD] 100% Orange Juice
+2026-03-15 23:18:53,093 | INFO | [OLD] Little Nightmares
+2026-03-15 23:18:55,037 | INFO | [OLD] Victoria 3
+2026-03-15 23:18:56,945 | INFO | [OLD] DG2: Defense Grid 2
+2026-03-15 23:18:58,928 | INFO | [OLD] NieR:Automata™
+2026-03-15 23:19:01,229 | INFO | [OLD] The Age of Decadence
+2026-03-15 23:19:03,802 | INFO | [OLD] Acceleration of SUGURI 2
+2026-03-15 23:19:05,745 | INFO | [OLD] Serious Sam II
+2026-03-15 23:19:10,706 | INFO | [SKIP] American Truck Simulator | discount 0% < 50%
+2026-03-15 23:19:36,371 | INFO | [TEST MODE] csv=test_games.csv candidates=10
+2026-03-15 23:19:36,371 | INFO | [TEST MODE] candidates=10
+2026-03-15 23:19:39,282 | INFO | [NEW] Ultimate Fishing Simulator® | -95% | 20.0 UAH | rating=89.38% | reviews=8627 | sale_end=16 березня
+2026-03-15 23:19:41,993 | INFO | [NEW] 100% Orange Juice | -85% | 24.0 UAH | rating=91.23% | reviews=29666 | sale_end=16 березня
+2026-03-15 23:19:44,622 | INFO | [NEW] Little Nightmares | -75% | 162.0 UAH | rating=94.74% | reviews=114887 | sale_end=19 березня
+2026-03-15 23:19:47,108 | INFO | [NEW] Victoria 3 | -70% | 404.0 UAH | rating=70.54% | reviews=57916 | sale_end=19 березня
+2026-03-15 23:19:49,605 | INFO | [NEW] DG2: Defense Grid 2 | -62% | 85.0 UAH | rating=86.42% | reviews=3306 | sale_end=16 березня
+2026-03-15 23:19:52,026 | INFO | [NEW] NieR:Automata™ | -60% | 186.0 UAH | rating=87.3% | reviews=148620 | sale_end=19 березня
+2026-03-15 23:19:54,372 | INFO | [NEW] The Age of Decadence | -60% | 130.0 UAH | rating=82.22% | reviews=3936 | sale_end=16 березня
+2026-03-15 23:19:57,116 | INFO | [NEW] Acceleration of SUGURI 2 | -50% | 103.0 UAH | rating=78.28% | reviews=1243 | sale_end=16 березня
+2026-03-15 23:19:59,510 | INFO | [NEW] Serious Sam II | -75% | 56.0 UAH | rating=89.83% | reviews=13624 | sale_end=19 березня
+2026-03-15 23:20:00,056 | INFO | [SKIP] American Truck Simulator | discount 0% < 50%
+2026-03-15 23:20:04,148 | INFO | HTTP Request: POST https://api.telegram.org/bot8796502754:AAED-jY-FVhmPCTU1SyTyWp7AmVbOpngWyI/sendPhoto "HTTP/1.1 200 OK"
+2026-03-15 23:20:05,811 | INFO | HTTP Request: POST https://api.telegram.org/bot8796502754:AAED-jY-FVhmPCTU1SyTyWp7AmVbOpngWyI/sendPhoto "HTTP/1.1 200 OK"
+2026-03-15 23:20:11,608 | INFO | HTTP Request: POST https://api.telegram.org/bot8796502754:AAED-jY-FVhmPCTU1SyTyWp7AmVbOpngWyI/sendPhoto "HTTP/1.1 200 OK"
+2026-03-15 23:20:12,717 | INFO | HTTP Request: POST https://api.telegram.org/bot8796502754:AAED-jY-FVhmPCTU1SyTyWp7AmVbOpngWyI/sendMessage "HTTP/1.1 200 OK"
+2026-03-15 23:20:17,296 | INFO | HTTP Request: POST https://api.telegram.org/bot8796502754:AAED-jY-FVhmPCTU1SyTyWp7AmVbOpngWyI/sendPhoto "HTTP/1.1 200 OK"
+2026-03-15 23:20:18,786 | INFO | HTTP Request: POST https://api.telegram.org/bot8796502754:AAED-jY-FVhmPCTU1SyTyWp7AmVbOpngWyI/sendPhoto "HTTP/1.1 200 OK"
+2026-03-15 23:20:20,122 | INFO | HTTP Request: POST https://api.telegram.org/bot8796502754:AAED-jY-FVhmPCTU1SyTyWp7AmVbOpngWyI/sendPhoto "HTTP/1.1 200 OK"
+2026-03-15 23:20:21,249 | INFO | HTTP Request: POST https://api.telegram.org/bot8796502754:AAED-jY-FVhmPCTU1SyTyWp7AmVbOpngWyI/sendMessage "HTTP/1.1 200 OK"
+2026-03-15 23:20:25,746 | INFO | HTTP Request: POST https://api.telegram.org/bot8796502754:AAED-jY-FVhmPCTU1SyTyWp7AmVbOpngWyI/sendPhoto "HTTP/1.1 200 OK"
+2026-03-15 23:20:27,614 | INFO | HTTP Request: POST https://api.telegram.org/bot8796502754:AAED-jY-FVhmPCTU1SyTyWp7AmVbOpngWyI/sendPhoto "HTTP/1.1 200 OK"
+2026-03-15 23:20:29,114 | INFO | HTTP Request: POST https://api.telegram.org/bot8796502754:AAED-jY-FVhmPCTU1SyTyWp7AmVbOpngWyI/sendPhoto "HTTP/1.1 200 OK"
+2026-03-15 23:20:30,238 | INFO | HTTP Request: POST https://api.telegram.org/bot8796502754:AAED-jY-FVhmPCTU1SyTyWp7AmVbOpngWyI/sendMessage "HTTP/1.1 200 OK"
+2026-03-15 23:20:33,900 | INFO | HTTP Request: POST https://api.telegram.org/bot8796502754:AAED-jY-FVhmPCTU1SyTyWp7AmVbOpngWyI/sendPhoto "HTTP/1.1 200 OK"
+2026-03-15 23:20:35,205 | INFO | HTTP Request: POST https://api.telegram.org/bot8796502754:AAED-jY-FVhmPCTU1SyTyWp7AmVbOpngWyI/sendPhoto "HTTP/1.1 200 OK"
+2026-03-15 23:20:36,319 | INFO | HTTP Request: POST https://api.telegram.org/bot8796502754:AAED-jY-FVhmPCTU1SyTyWp7AmVbOpngWyI/sendMessage "HTTP/1.1 200 OK"
+2026-03-15 23:20:40,876 | INFO | HTTP Request: POST https://api.telegram.org/bot8796502754:AAED-jY-FVhmPCTU1SyTyWp7AmVbOpngWyI/sendPhoto "HTTP/1.1 200 OK"
+2026-03-15 23:20:42,216 | INFO | HTTP Request: POST https://api.telegram.org/bot8796502754:AAED-jY-FVhmPCTU1SyTyWp7AmVbOpngWyI/sendPhoto "HTTP/1.1 200 OK"
+2026-03-15 23:20:43,529 | INFO | HTTP Request: POST https://api.telegram.org/bot8796502754:AAED-jY-FVhmPCTU1SyTyWp7AmVbOpngWyI/sendPhoto "HTTP/1.1 200 OK"
+2026-03-15 23:20:44,630 | INFO | HTTP Request: POST https://api.telegram.org/bot8796502754:AAED-jY-FVhmPCTU1SyTyWp7AmVbOpngWyI/sendMessage "HTTP/1.1 200 OK"
+2026-03-15 23:20:48,763 | INFO | HTTP Request: POST https://api.telegram.org/bot8796502754:AAED-jY-FVhmPCTU1SyTyWp7AmVbOpngWyI/sendPhoto "HTTP/1.1 200 OK"
+2026-03-15 23:20:50,060 | INFO | HTTP Request: POST https://api.telegram.org/bot8796502754:AAED-jY-FVhmPCTU1SyTyWp7AmVbOpngWyI/sendPhoto "HTTP/1.1 429 Too Many Requests"
+2026-03-15 23:21:05,588 | INFO | HTTP Request: POST https://api.telegram.org/bot8796502754:AAED-jY-FVhmPCTU1SyTyWp7AmVbOpngWyI/sendPhoto "HTTP/1.1 200 OK"
+2026-03-15 23:21:06,700 | INFO | HTTP Request: POST https://api.telegram.org/bot8796502754:AAED-jY-FVhmPCTU1SyTyWp7AmVbOpngWyI/sendMessage "HTTP/1.1 200 OK"
+2026-03-15 23:21:15,861 | INFO | HTTP Request: POST https://api.telegram.org/bot8796502754:AAED-jY-FVhmPCTU1SyTyWp7AmVbOpngWyI/sendPhoto "HTTP/1.1 200 OK"
+2026-03-15 23:21:17,212 | INFO | HTTP Request: POST https://api.telegram.org/bot8796502754:AAED-jY-FVhmPCTU1SyTyWp7AmVbOpngWyI/sendPhoto "HTTP/1.1 200 OK"
+2026-03-15 23:21:18,547 | INFO | HTTP Request: POST https://api.telegram.org/bot8796502754:AAED-jY-FVhmPCTU1SyTyWp7AmVbOpngWyI/sendPhoto "HTTP/1.1 200 OK"
+2026-03-15 23:21:19,673 | INFO | HTTP Request: POST https://api.telegram.org/bot8796502754:AAED-jY-FVhmPCTU1SyTyWp7AmVbOpngWyI/sendMessage "HTTP/1.1 200 OK"
+2026-03-15 23:21:23,586 | INFO | HTTP Request: POST https://api.telegram.org/bot8796502754:AAED-jY-FVhmPCTU1SyTyWp7AmVbOpngWyI/sendPhoto "HTTP/1.1 200 OK"
+2026-03-15 23:21:24,893 | INFO | HTTP Request: POST https://api.telegram.org/bot8796502754:AAED-jY-FVhmPCTU1SyTyWp7AmVbOpngWyI/sendPhoto "HTTP/1.1 200 OK"
+2026-03-15 23:21:26,010 | INFO | HTTP Request: POST https://api.telegram.org/bot8796502754:AAED-jY-FVhmPCTU1SyTyWp7AmVbOpngWyI/sendMessage "HTTP/1.1 200 OK"
+2026-03-15 23:21:30,398 | INFO | HTTP Request: POST https://api.telegram.org/bot8796502754:AAED-jY-FVhmPCTU1SyTyWp7AmVbOpngWyI/sendPhoto "HTTP/1.1 200 OK"
+2026-03-15 23:21:31,764 | INFO | HTTP Request: POST https://api.telegram.org/bot8796502754:AAED-jY-FVhmPCTU1SyTyWp7AmVbOpngWyI/sendPhoto "HTTP/1.1 200 OK"
+2026-03-15 23:21:33,093 | INFO | HTTP Request: POST https://api.telegram.org/bot8796502754:AAED-jY-FVhmPCTU1SyTyWp7AmVbOpngWyI/sendPhoto "HTTP/1.1 200 OK"
+2026-03-15 23:21:34,278 | INFO | HTTP Request: POST https://api.telegram.org/bot8796502754:AAED-jY-FVhmPCTU1SyTyWp7AmVbOpngWyI/sendMessage "HTTP/1.1 200 OK"
