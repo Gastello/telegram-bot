@@ -1,4 +1,5 @@
 import asyncio
+from io import BytesIO
 
 from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.error import RetryAfter, TimedOut
@@ -16,10 +17,25 @@ from image_generator import (
 )
 
 
-async def safe_send_photo(bot: Bot, **kwargs):
+async def safe_send_photo(
+    bot: Bot,
+    *,
+    chat_id: int,
+    photo_bytes: bytes,
+    filename: str,
+    caption: str,
+    reply_markup=None,
+):
     for attempt in range(4):
         try:
-            return await bot.send_photo(**kwargs)
+            bio = BytesIO(photo_bytes)
+            bio.name = filename
+            return await bot.send_photo(
+                chat_id=chat_id,
+                photo=bio,
+                caption=caption,
+                reply_markup=reply_markup,
+            )
         except RetryAfter as error:
             wait_time = int(getattr(error, "retry_after", 5)) + 1
             print(f"[TG RETRY] send_photo retry after {wait_time}s")
@@ -48,7 +64,11 @@ async def safe_send_message(bot: Bot, **kwargs):
     raise RuntimeError("Failed to send message to Telegram after retries")
 
 
-def build_variant_keyboard(moderation_id: int, variant_key: str, single_variant: bool) -> InlineKeyboardMarkup:
+def build_variant_keyboard(
+    moderation_id: int,
+    variant_key: str,
+    single_variant: bool,
+) -> InlineKeyboardMarkup:
     if single_variant:
         return InlineKeyboardMarkup([
             [
@@ -125,9 +145,14 @@ async def _send_to_moderation_async(deal: dict) -> None:
             "image_path": image_path,
         })
 
+    if not generated_variants:
+        raise RuntimeError(
+            f"No image variants generated for appid={deal['appid']} title={deal['title']}"
+        )
+
     single_variant = len(generated_variants) == 1
 
-    # Тепер надсилаємо фото
+    # Надсилаємо фото
     for item in generated_variants:
         variant_key = item["variant_key"]
         image_path = item["image_path"]
@@ -139,13 +164,16 @@ async def _send_to_moderation_async(deal: dict) -> None:
         )
 
         with open(image_path, "rb") as image_file:
-            sent = await safe_send_photo(
-                bot,
-                chat_id=MOD_CHAT_ID,
-                photo=image_file,
-                caption=f"{deal['title']} · варіант {variant_key}",
-                reply_markup=keyboard,
-            )
+            photo_bytes = image_file.read()
+
+        sent = await safe_send_photo(
+            bot,
+            chat_id=MOD_CHAT_ID,
+            photo_bytes=photo_bytes,
+            filename=f"{deal['appid']}_{variant_key}.png",
+            caption=f"{deal['title']} · варіант {variant_key}",
+            reply_markup=keyboard,
+        )
 
         register_moderation_message(
             moderation_id,

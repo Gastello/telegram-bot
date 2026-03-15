@@ -1,5 +1,8 @@
+import csv
+import logging
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from pathlib import Path
 from typing import Any
 
 import requests
@@ -44,11 +47,45 @@ REQUEST_HEADERS = {
     )
 }
 
+LOGS_DIR = Path("logs")
+LOGS_DIR.mkdir(exist_ok=True)
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)s | %(message)s",
+    handlers=[
+        logging.FileHandler(LOGS_DIR / "checker.log", encoding="utf-8"),
+        logging.StreamHandler(),
+    ],
+)
+logger = logging.getLogger("checker")
+
 
 def make_session() -> requests.Session:
     session = requests.Session()
     session.headers.update(REQUEST_HEADERS)
     return session
+
+
+def load_test_candidates(csv_path: str) -> list[dict[str, str]]:
+    candidates: list[dict[str, str]] = []
+
+    with open(csv_path, "r", encoding="utf-8-sig", newline="") as file:
+        reader = csv.DictReader(file)
+
+        for row in reader:
+            appid = (row.get("appid") or "").strip()
+            title = (row.get("title") or "").strip()
+
+            if not appid:
+                continue
+
+            candidates.append({
+                "appid": appid,
+                "title": title or appid,
+            })
+
+    return candidates
 
 
 def translate_description(appid: str, text: str) -> str:
@@ -64,7 +101,7 @@ def translate_description(appid: str, text: str) -> str:
         save_translation(appid, text, translated)
         return translated
     except Exception as error:
-        print(f"[WARN] translation appid={appid}: {error}")
+        logger.warning(f"translation appid={appid}: {error}")
         return text
 
 
@@ -84,7 +121,7 @@ def get_json_with_retry(
             if response.status_code == 429:
                 if attempt < MAX_RETRIES:
                     sleep_time = 2 * (attempt + 1)
-                    print(f"[RATE LIMIT] {label}: retry in {sleep_time}s")
+                    logger.warning(f"[RATE LIMIT] {label}: retry in {sleep_time}s")
                     time.sleep(sleep_time)
                     continue
                 return None
@@ -95,14 +132,14 @@ def get_json_with_retry(
         except requests.RequestException as error:
             if attempt < MAX_RETRIES:
                 sleep_time = 1.5 * (attempt + 1)
-                print(f"[RETRY] {label}: {error} | retry in {sleep_time}s")
+                logger.warning(f"[RETRY] {label}: {error} | retry in {sleep_time}s")
                 time.sleep(sleep_time)
                 continue
 
-            print(f"[ERROR] {label}: {error}")
+            logger.error(f"{label}: {error}")
             return None
         except ValueError as error:
-            print(f"[ERROR] {label}: invalid JSON: {error}")
+            logger.error(f"{label}: invalid JSON: {error}")
             return None
 
     return None
@@ -167,20 +204,23 @@ def fetch_changed_store_apps(if_modified_since: int) -> list[dict]:
 
 
 def bootstrap_store_catalog() -> None:
-    print("[BOOTSTRAP] Store catalog is empty. Downloading full store catalog...")
+    logger.info("[BOOTSTRAP] Store catalog is empty. Downloading full store catalog...")
 
     apps = fetch_changed_store_apps(0)
     if not apps:
-        print("[BOOTSTRAP] No apps fetched.")
+        logger.info("[BOOTSTRAP] No apps fetched.")
         return
 
     upsert_store_catalog_entries(apps)
 
-    # 10 березня 2026 00:00:00 UTC
-    set_store_sync_since(1773100800)
+    max_last_modified = max((int(app.get("last_modified", 0) or 0) for app in apps), default=0)
+    if max_last_modified > 0:
+        set_store_sync_since(max_last_modified - 10)
+    else:
+        set_store_sync_since(int(time.time()))
 
-    print(f"[BOOTSTRAP] Saved {len(apps)} store items.")
-    print("[BOOTSTRAP] Run checker again to process only future price/store changes.")
+    logger.info(f"[BOOTSTRAP] Saved {len(apps)} store items.")
+    logger.info("[BOOTSTRAP] Run checker again to process only future price/store changes.")
 
 
 def build_price_change_candidates(changed_apps: list[dict]) -> list[dict]:
@@ -335,7 +375,7 @@ def process_candidate(
     try:
         sale_end_text = get_sale_end_text(appid) or ""
     except Exception as error:
-        print(f"[WARN] sale_end appid={appid}: {error}")
+        logger.warning(f"sale_end appid={appid}: {error}")
 
     original_description = deal["original_description"]
     translated_description = translate_description(appid, original_description)
@@ -350,45 +390,13 @@ def process_candidate(
     return ("", deal)
 
 
-def check_games() -> list[dict[str, Any]]:
-    if store_catalog_is_empty():
-        bootstrap_store_catalog()
-        return []
-
-    since = get_store_sync_since()
-    print(f"[STORE FEED] if_modified_since={since}")
-
-    changed_apps = fetch_changed_store_apps(since)
-    print(f"[STORE FEED] changed apps: {len(changed_apps)}")
-
-    if not changed_apps:
-        set_store_sync_since(int(time.time()))
-        return []
-
-    candidates = [
-        {
-            "appid": app["appid"],
-            "title": app["title"],
-        }
-        for app in changed_apps
-    ]
-
-    # тимчасово для backfill
-    candidates = candidates[:80]
-
-    print(f"[STORE FEED] changed-app candidates: {len(candidates)}")
-
-    upsert_store_catalog_entries(changed_apps)
-
-    max_last_modified = max((int(app.get("last_modified", 0) or 0) for app in changed_apps), default=0)
-    if max_last_modified > 0:
-        set_store_sync_since(max_last_modified - 10)
+def run_candidates(candidates: list[dict[str, str]], mode_label: str) -> list[dict[str, Any]]:
+    logger.info(f"[{mode_label}] candidates={len(candidates)}")
 
     new_deals: list[dict[str, Any]] = []
 
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
         sessions = [make_session() for _ in range(MAX_WORKERS)]
-
         future_to_candidate = {}
 
         for i, candidate in enumerate(candidates):
@@ -403,11 +411,11 @@ def check_games() -> list[dict[str, Any]]:
             try:
                 log_line, deal = future.result()
             except Exception as error:
-                print(f"[ERROR] appid={appid}: worker failed: {error}")
+                logger.error(f"appid={appid}: worker failed: {error}")
                 continue
 
             if log_line:
-                print(log_line)
+                logger.info(log_line)
 
             if not deal:
                 continue
@@ -416,7 +424,7 @@ def check_games() -> list[dict[str, Any]]:
                 new_deals.append(deal)
                 save_deal(deal)
 
-                print(
+                logger.info(
                     f"[NEW] {deal['title']} | "
                     f"-{deal['discount_percent']}% | "
                     f"{deal['final_price']} {deal['currency']} | "
@@ -425,7 +433,7 @@ def check_games() -> list[dict[str, Any]]:
                     f"sale_end={deal['sale_end_text'] or 'N/A'}"
                 )
             else:
-                print(f"[OLD] {deal['title']}")
+                logger.info(f"[OLD] {deal['title']}")
 
     new_deals.sort(
         key=lambda d: (
@@ -439,11 +447,43 @@ def check_games() -> list[dict[str, Any]]:
     for deal in new_deals:
         try:
             send_to_moderation(deal)
-            time.sleep(0.4)
+            time.sleep(0.6)
         except Exception as error:
-            print(f"[ERROR] moderation send appid={deal['appid']}: {error}")
+            logger.error(f"moderation send appid={deal['appid']}: {error}")
 
     return new_deals
+
+
+def check_games(test_csv: str | None = None) -> list[dict[str, Any]]:
+    if test_csv:
+        candidates = load_test_candidates(test_csv)
+        logger.info(f"[TEST MODE] csv={test_csv} candidates={len(candidates)}")
+        return run_candidates(candidates, "TEST MODE")
+
+    if store_catalog_is_empty():
+        bootstrap_store_catalog()
+        return []
+
+    since = get_store_sync_since()
+    logger.info(f"[STORE FEED] if_modified_since={since}")
+
+    changed_apps = fetch_changed_store_apps(since)
+    logger.info(f"[STORE FEED] changed apps: {len(changed_apps)}")
+
+    if not changed_apps:
+        set_store_sync_since(int(time.time()))
+        return []
+
+    candidates = build_price_change_candidates(changed_apps)
+    logger.info(f"[STORE FEED] price-change candidates: {len(candidates)}")
+
+    upsert_store_catalog_entries(changed_apps)
+
+    max_last_modified = max((int(app.get("last_modified", 0) or 0) for app in changed_apps), default=0)
+    if max_last_modified > 0:
+        set_store_sync_since(max_last_modified - 10)
+
+    return run_candidates(candidates, "STORE FEED")
 
 
 def print_deals(deals: list[dict[str, Any]]) -> None:
@@ -466,7 +506,12 @@ def print_deals(deals: list[dict[str, Any]]) -> None:
 
 
 if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--test-csv", dest="test_csv", default=None)
+    args = parser.parse_args()
+
     init_db()
-    set_store_sync_since(1773100800)  # DELETE
-    deals = check_games()
+    deals = check_games(test_csv=args.test_csv)
     print_deals(deals)
