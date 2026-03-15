@@ -1,4 +1,5 @@
 import os
+import re
 from io import BytesIO
 from typing import Optional
 
@@ -10,6 +11,10 @@ CANVAS_HEIGHT = 1280
 BACKGROUND_HEIGHT = 1100
 
 COLOR_TEXT = "#B8ED15"
+
+DATE_FONT_SIZE = 48
+DATE_LEFT = 20
+DATE_TOP = 44
 
 OLD_PRICE_FONT_SIZE = 48
 OLD_PRICE_LEFT = 20
@@ -33,11 +38,25 @@ REQUEST_HEADERS = {
     )
 }
 
-
 VARIANT_SOURCE_MAP = {
     "1": "page_bg_raw",
     "2": "library_hero",
     "3": "header_image",
+}
+
+MONTHS_UA_TO_NUM = {
+    "січня": "01",
+    "лютого": "02",
+    "березня": "03",
+    "квітня": "04",
+    "травня": "05",
+    "червня": "06",
+    "липня": "07",
+    "серпня": "08",
+    "вересня": "09",
+    "жовтня": "10",
+    "листопада": "11",
+    "грудня": "12",
 }
 
 
@@ -143,8 +162,45 @@ def format_price_for_image(value: float, currency: str) -> str:
     return f"{value:.2f} {currency}"
 
 
+def format_sale_end_for_image(sale_end_text: str | None) -> str:
+    if not sale_end_text:
+        return ""
+
+    text = sale_end_text.strip().lower()
+
+    # already numeric-like
+    match_numeric = re.search(r"(\d{1,2})[./-](\d{1,2})", text)
+    if match_numeric:
+        day = int(match_numeric.group(1))
+        month = int(match_numeric.group(2))
+        return f"до {day:02d}.{month:02d}"
+
+    # ukrainian month text, e.g. "19 березня"
+    match_words = re.search(r"(\d{1,2})\s+([а-щьюяєіїґ]+)", text)
+    if match_words:
+        day = int(match_words.group(1))
+        month_word = match_words.group(2)
+        month_num = MONTHS_UA_TO_NUM.get(month_word)
+        if month_num:
+            return f"до {day:02d}.{month_num}"
+
+    return ""
+
+
 def load_font(size: int) -> ImageFont.FreeTypeFont:
     return ImageFont.truetype(FONT_PATH, size)
+
+
+def draw_sale_end(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.FreeTypeFont) -> None:
+    if not text:
+        return
+
+    draw.text(
+        (DATE_LEFT, DATE_TOP),
+        text,
+        font=font,
+        fill=COLOR_TEXT,
+    )
 
 
 def draw_old_price(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.FreeTypeFont) -> None:
@@ -183,6 +239,7 @@ def generate_post_image(
     header_image_url: str = "",
     source_type: str = "auto",
     custom_background_path: str | None = None,
+    sale_end_text: str | None = None,
     output_path: Optional[str] = None,
 ) -> str:
     background = load_background(
@@ -204,12 +261,15 @@ def generate_post_image(
 
     draw = ImageDraw.Draw(canvas)
 
+    date_font = load_font(DATE_FONT_SIZE)
     old_price_font = load_font(OLD_PRICE_FONT_SIZE)
     new_price_font = load_font(NEW_PRICE_FONT_SIZE)
 
+    sale_end_image_text = format_sale_end_for_image(sale_end_text)
     old_price_text = format_price_for_image(initial_price, currency)
     new_price_text = format_price_for_image(final_price, currency)
 
+    draw_sale_end(draw, sale_end_image_text, date_font)
     draw_old_price(draw, old_price_text, old_price_font)
     draw_new_price(draw, new_price_text, new_price_font)
 

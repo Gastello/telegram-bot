@@ -2,6 +2,8 @@ import csv
 import requests
 from typing import Any
 
+from deep_translator import GoogleTranslator
+
 from database import (
     init_db,
     is_new_deal,
@@ -12,7 +14,6 @@ from database import (
 )
 from bot import send_to_moderation
 from steam_store_parser import get_sale_end_text
-from deep_translator import GoogleTranslator
 
 STEAM_URL = "https://store.steampowered.com/api/appdetails"
 REVIEWS_URL = "https://store.steampowered.com/appreviews"
@@ -22,6 +23,14 @@ COUNTRY_CODE = "ua"
 DISCOUNT_THRESHOLD = 50
 MIN_TOTAL_REVIEWS = 1000
 MIN_REVIEW_PERCENT = 80.0
+
+REQUEST_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/122.0.0.0 Safari/537.36"
+    )
+}
 
 
 def load_games(csv_path: str = "games.csv") -> list[dict[str, str]]:
@@ -55,7 +64,8 @@ def translate_description(appid: str, text: str) -> str:
 
     try:
         return GoogleTranslator(source="auto", target="uk").translate(text)
-    except Exception:
+    except Exception as error:
+        print(f"[WARN] translation appid={appid}: {error}")
         return text
 
 
@@ -63,7 +73,7 @@ def fetch_app_details(appid: str) -> dict[str, Any] | None:
     url = f"{STEAM_URL}?appids={appid}&cc={COUNTRY_CODE}"
 
     try:
-        response = requests.get(url, timeout=20)
+        response = requests.get(url, timeout=20, headers=REQUEST_HEADERS)
         response.raise_for_status()
         payload = response.json()
     except requests.RequestException as error:
@@ -84,7 +94,7 @@ def fetch_reviews_summary(appid: str) -> dict[str, Any] | None:
     url = f"{REVIEWS_URL}/{appid}?json=1&filter=all&language=all&purchase_type=all&num_per_page=0"
 
     try:
-        response = requests.get(url, timeout=20)
+        response = requests.get(url, timeout=20, headers=REQUEST_HEADERS)
         response.raise_for_status()
         payload = response.json()
     except requests.RequestException as error:
@@ -98,6 +108,7 @@ def fetch_reviews_summary(appid: str) -> dict[str, Any] | None:
         return None
 
     summary = payload.get("query_summary", {})
+
     total_positive = int(summary.get("total_positive", 0))
     total_negative = int(summary.get("total_negative", 0))
     total_reviews = int(summary.get("total_reviews", 0))
