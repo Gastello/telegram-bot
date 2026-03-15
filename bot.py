@@ -1,5 +1,7 @@
 import asyncio
+
 from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.error import RetryAfter, TimedOut
 
 from config import BOT_TOKEN, MOD_CHAT_ID
 from database import (
@@ -14,20 +16,89 @@ from image_generator import (
 )
 
 
+async def safe_send_photo(bot: Bot, **kwargs):
+    for attempt in range(4):
+        try:
+            return await bot.send_photo(**kwargs)
+        except RetryAfter as error:
+            wait_time = int(getattr(error, "retry_after", 5)) + 1
+            print(f"[TG RETRY] send_photo retry after {wait_time}s")
+            await asyncio.sleep(wait_time)
+        except TimedOut:
+            wait_time = 3 * (attempt + 1)
+            print(f"[TG RETRY] send_photo timed out, retry in {wait_time}s")
+            await asyncio.sleep(wait_time)
+
+    raise RuntimeError("Failed to send photo to Telegram after retries")
+
+
+async def safe_send_message(bot: Bot, **kwargs):
+    for attempt in range(4):
+        try:
+            return await bot.send_message(**kwargs)
+        except RetryAfter as error:
+            wait_time = int(getattr(error, "retry_after", 5)) + 1
+            print(f"[TG RETRY] send_message retry after {wait_time}s")
+            await asyncio.sleep(wait_time)
+        except TimedOut:
+            wait_time = 3 * (attempt + 1)
+            print(f"[TG RETRY] send_message timed out, retry in {wait_time}s")
+            await asyncio.sleep(wait_time)
+
+    raise RuntimeError("Failed to send message to Telegram after retries")
+
+
+def build_variant_keyboard(moderation_id: int, variant_key: str, single_variant: bool) -> InlineKeyboardMarkup:
+    if single_variant:
+        return InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton(
+                    "✅ Обрати цей варіант",
+                    callback_data=f"choose_variant|{moderation_id}|{variant_key}",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "📤 Своє фото",
+                    callback_data=f"upload_custom|{moderation_id}",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "❌ Reject",
+                    callback_data=f"reject|{moderation_id}",
+                ),
+                InlineKeyboardButton(
+                    "🚫 Block game",
+                    callback_data=f"block|{moderation_id}",
+                ),
+            ],
+        ])
+
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton(
+                "✅ Обрати цей варіант",
+                callback_data=f"choose_variant|{moderation_id}|{variant_key}",
+            )
+        ]
+    ])
+
+
 async def _send_to_moderation_async(deal: dict) -> None:
     moderation_id = create_moderation_item(deal)
-
     bot = Bot(token=BOT_TOKEN)
 
-    generated_variants: list[str] = []
+    generated_variants: list[dict] = []
 
+    # Спочатку генеруємо всі доступні варіанти
     for variant_key, source_type in VARIANT_SOURCE_MAP.items():
-
         image_path = None
 
         try:
             image_path = generate_post_image(
                 appid=deal["appid"],
+                title=deal["title"],
                 final_price=deal["final_price"],
                 initial_price=deal["initial_price"],
                 currency=deal["currency"],
@@ -35,11 +106,11 @@ async def _send_to_moderation_async(deal: dict) -> None:
                 sale_end_text=deal.get("sale_end_text", ""),
                 source_type=source_type,
                 output_path=get_generated_image_path(
-                    moderation_id,
+                    deal["title"],
+                    deal["appid"],
                     f"variant_{variant_key}",
                 ),
             )
-
         except Exception as error:
             print(
                 f"[IMG VARIANT ERROR] moderation_id={moderation_id} "
@@ -49,19 +120,27 @@ async def _send_to_moderation_async(deal: dict) -> None:
         if not image_path:
             continue
 
-        generated_variants.append(variant_key)
+        generated_variants.append({
+            "variant_key": variant_key,
+            "image_path": image_path,
+        })
 
-        keyboard = InlineKeyboardMarkup([
-            [
-                InlineKeyboardButton(
-                    "✅ Обрати цей варіант",
-                    callback_data=f"choose_variant|{moderation_id}|{variant_key}",
-                )
-            ]
-        ])
+    single_variant = len(generated_variants) == 1
+
+    # Тепер надсилаємо фото
+    for item in generated_variants:
+        variant_key = item["variant_key"]
+        image_path = item["image_path"]
+
+        keyboard = build_variant_keyboard(
+            moderation_id=moderation_id,
+            variant_key=variant_key,
+            single_variant=single_variant,
+        )
 
         with open(image_path, "rb") as image_file:
-            sent = await bot.send_photo(
+            sent = await safe_send_photo(
+                bot,
                 chat_id=MOD_CHAT_ID,
                 photo=image_file,
                 caption=f"{deal['title']} · варіант {variant_key}",
@@ -75,49 +154,54 @@ async def _send_to_moderation_async(deal: dict) -> None:
             f"variant_{variant_key}",
         )
 
-    control_text = (
-        f"{deal['title']}\n"
-        f"Обери варіант зображення"
-    )
+        await asyncio.sleep(0.6)
 
-    if generated_variants:
-        control_text += f" ({', '.join(generated_variants)})"
+    # Якщо варіантів кілька — шлемо окрему control panel
+    if not single_variant:
+        control_text = (
+            f"{deal['title']}\n"
+            f"Обери варіант зображення"
+        )
 
-    control_text += "\nабо завантаж своє фото."
+        if generated_variants:
+            control_text += f" ({', '.join(v['variant_key'] for v in generated_variants)})"
 
-    control_keyboard = InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton(
-                "📤 Своє фото",
-                callback_data=f"upload_custom|{moderation_id}",
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "❌ Reject",
-                callback_data=f"reject|{moderation_id}",
-            ),
-            InlineKeyboardButton(
-                "🚫 Block game",
-                callback_data=f"block|{moderation_id}",
-            ),
-        ],
-    ])
+        control_text += "\nабо завантаж своє фото."
 
-    control_message = await bot.send_message(
-        chat_id=MOD_CHAT_ID,
-        text=control_text,
-        reply_markup=control_keyboard,
-    )
+        control_keyboard = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton(
+                    "📤 Своє фото",
+                    callback_data=f"upload_custom|{moderation_id}",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "❌ Reject",
+                    callback_data=f"reject|{moderation_id}",
+                ),
+                InlineKeyboardButton(
+                    "🚫 Block game",
+                    callback_data=f"block|{moderation_id}",
+                ),
+            ],
+        ])
 
-    set_control_message_id(moderation_id, control_message.message_id)
+        control_message = await safe_send_message(
+            bot,
+            chat_id=MOD_CHAT_ID,
+            text=control_text,
+            reply_markup=control_keyboard,
+        )
 
-    register_moderation_message(
-        moderation_id,
-        MOD_CHAT_ID,
-        control_message.message_id,
-        "control",
-    )
+        set_control_message_id(moderation_id, control_message.message_id)
+
+        register_moderation_message(
+            moderation_id,
+            MOD_CHAT_ID,
+            control_message.message_id,
+            "control",
+        )
 
 
 def send_to_moderation(deal: dict) -> None:

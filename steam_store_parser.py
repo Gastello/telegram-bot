@@ -1,42 +1,56 @@
 import re
-from datetime import datetime
 from zoneinfo import ZoneInfo
+from datetime import datetime, timedelta
 
 import requests
 from bs4 import BeautifulSoup
 
 
-UA_TZ = ZoneInfo("Europe/Kyiv")
-
-MONTHS_UA = {
-    1: "січня",
-    2: "лютого",
-    3: "березня",
-    4: "квітня",
-    5: "травня",
-    6: "червня",
-    7: "липня",
-    8: "серпня",
-    9: "вересня",
-    10: "жовтня",
-    11: "листопада",
-    12: "грудня",
-}
+KYIV_TZ = ZoneInfo("Europe/Kyiv")
 
 
 def format_ua_date(dt: datetime) -> str:
-    return f"{dt.day} {MONTHS_UA[dt.month]}"
+    months = {
+        1: "січня",
+        2: "лютого",
+        3: "березня",
+        4: "квітня",
+        5: "травня",
+        6: "червня",
+        7: "липня",
+        8: "серпня",
+        9: "вересня",
+        10: "жовтня",
+        11: "листопада",
+        12: "грудня",
+    }
+    return f"{dt.day} {months[dt.month]}"
+
+
+def extract_timestamp_from_html(html: str, span_id: str) -> int | None:
+    """
+    Шукає JS типу:
+    InitDailyDealTimer( $DiscountCountdown, 1773680400 );
+    """
+    pattern = rf"{re.escape(span_id)}.*?InitDailyDealTimer\(\s*\$DiscountCountdown,\s*(\d+)\s*\)"
+    match = re.search(pattern, html, flags=re.DOTALL)
+    if match:
+        return int(match.group(1))
+
+    # запасний варіант: просто шукаємо біля span_id
+    around_pattern = rf"{re.escape(span_id)}.*?(\d{{10}})"
+    match = re.search(around_pattern, html, flags=re.DOTALL)
+    if match:
+        return int(match.group(1))
+
+    return None
 
 
 def get_sale_end_text(appid: str) -> str | None:
     url = f"https://store.steampowered.com/app/{appid}/"
 
     headers = {
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/122.0.0.0 Safari/537.36"
-        ),
+        "User-Agent": "Mozilla/5.0",
         "Accept-Language": "uk,en;q=0.9",
     }
 
@@ -63,30 +77,28 @@ def get_sale_end_text(appid: str) -> str | None:
 
     full_text = " ".join(countdown.get_text(" ", strip=True).split())
 
-    # 1. Якщо дата вже є прямо в HTML
-    match_date = re.search(r"Діє до\s+(.+)$", full_text)
-    if match_date:
-        return match_date.group(1).strip()
+    # Варіант 1: "Діє до 19 березня"
+    m = re.search(r"Діє до\s+(\d{1,2}\s+[А-Яа-яІіЇїЄєҐґ]+)", full_text, flags=re.IGNORECASE)
+    if m:
+        return m.group(1).strip()
 
-    # 2. Якщо це live countdown, Steam часто ініціалізує його JS-функцією
-    #    Наприклад: InitDailyDealTimer( $DiscountCountdown, 1773680400 );
-    match_timer = re.search(
-        r"InitDailyDealTimer\(\s*\$DiscountCountdown\s*,\s*(\d+)\s*\)",
-        html
-    )
-    if match_timer:
-        end_ts = int(match_timer.group(1))
-        end_dt = datetime.fromtimestamp(end_ts, tz=UA_TZ)
-        return format_ua_date(end_dt)
+    # Варіант 2: "Закінчується 19 березня"
+    m = re.search(r"Закінчується\s+(\d{1,2}\s+[А-Яа-яІіЇїЄєҐґ]+)", full_text, flags=re.IGNORECASE)
+    if m:
+        return m.group(1).strip()
 
-    # 3. Fallback: якщо згодом знайдуться інші timer init-функції
-    generic_timer = re.search(
-        r"Init\w*Timer\([^)]*,\s*(\d{10})\s*\)",
-        html
-    )
-    if generic_timer:
-        end_ts = int(generic_timer.group(1))
-        end_dt = datetime.fromtimestamp(end_ts, tz=UA_TZ)
-        return format_ua_date(end_dt)
+    # Варіант 3: "Закінчиться через 31:28:52" — беремо timestamp із JS
+    if "Закінчиться через" in full_text or "Закінчується через" in full_text:
+        span = countdown.find("span")
+        if span and span.get("id"):
+            timestamp = extract_timestamp_from_html(html, span["id"])
+            if timestamp:
+                dt = datetime.fromtimestamp(timestamp, tz=KYIV_TZ)
+                return format_ua_date(dt)
+
+    # Варіант 4: іноді дата є в html, але не спіймалась попередніми патернами
+    m = re.search(r"(\d{1,2}\s+[А-Яа-яІіЇїЄєҐґ]+)", full_text)
+    if m:
+        return m.group(1).strip()
 
     return None

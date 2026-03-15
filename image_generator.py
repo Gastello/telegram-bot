@@ -60,12 +60,29 @@ MONTHS_UA_TO_NUM = {
 }
 
 
-def get_generated_image_path(moderation_id: int, kind: str) -> str:
-    return os.path.join(OUTPUT_DIR, f"{moderation_id}_{kind}.png")
+def slugify(text: str) -> str:
+    text = text.lower()
+    text = text.replace("ё", "е")
+    text = text.replace("®", "")
+    text = text.replace("™", "")
+    text = re.sub(r"[^\w\s-]", "", text, flags=re.UNICODE)
+    text = re.sub(r"\s+", "_", text)
+    text = re.sub(r"_+", "_", text)
+    return text.strip("_") or "game"
 
 
-def get_custom_upload_path(moderation_id: int, ext: str = "jpg") -> str:
-    return os.path.join(OUTPUT_DIR, f"{moderation_id}_custom_upload.{ext}")
+def build_file_stem(title: str, appid: str | int) -> str:
+    return f"{slugify(title)}_{appid}"
+
+
+def get_generated_image_path(title: str, appid: str | int, kind: str) -> str:
+    stem = build_file_stem(title, appid)
+    return os.path.join(OUTPUT_DIR, f"{stem}_{kind}.png")
+
+
+def get_custom_upload_path(title: str, appid: str | int, ext: str = "jpg") -> str:
+    stem = build_file_stem(title, appid)
+    return os.path.join(OUTPUT_DIR, f"{stem}_custom_upload.{ext}")
 
 
 def download_image(url: str) -> Optional[Image.Image]:
@@ -168,14 +185,12 @@ def format_sale_end_for_image(sale_end_text: str | None) -> str:
 
     text = sale_end_text.strip().lower()
 
-    # already numeric-like
     match_numeric = re.search(r"(\d{1,2})[./-](\d{1,2})", text)
     if match_numeric:
         day = int(match_numeric.group(1))
         month = int(match_numeric.group(2))
         return f"до {day:02d}.{month:02d}"
 
-    # ukrainian month text, e.g. "19 березня"
     match_words = re.search(r"(\d{1,2})\s+([а-щьюяєіїґ]+)", text)
     if match_words:
         day = int(match_words.group(1))
@@ -233,6 +248,7 @@ def draw_new_price(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.FreeTyp
 
 def generate_post_image(
     appid: str,
+    title: str,
     final_price: float,
     initial_price: float,
     currency: str,
@@ -274,7 +290,7 @@ def generate_post_image(
     draw_new_price(draw, new_price_text, new_price_font)
 
     if output_path is None:
-        output_path = os.path.join(OUTPUT_DIR, f"{appid}.png")
+        output_path = get_generated_image_path(title, appid, "final")
 
     canvas.save(output_path)
     return output_path

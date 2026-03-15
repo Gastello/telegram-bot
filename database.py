@@ -5,7 +5,9 @@ DB_PATH = Path("bot.db")
 
 
 def get_conn():
-    return sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
 
 
 def init_db():
@@ -71,6 +73,27 @@ def init_db():
     )
     """)
 
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS store_catalog (
+        appid TEXT PRIMARY KEY,
+        title TEXT,
+        last_modified INTEGER DEFAULT 0,
+        price_change_number INTEGER DEFAULT 0
+    )
+    """)
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS store_sync_state (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        if_modified_since INTEGER DEFAULT 0
+    )
+    """)
+
+    cur.execute("""
+    INSERT OR IGNORE INTO store_sync_state (id, if_modified_since)
+    VALUES (1, 0)
+    """)
+
     conn.commit()
     conn.close()
 
@@ -94,7 +117,8 @@ def is_new_deal(deal: dict) -> bool:
     if not row:
         return True
 
-    old_discount, old_price = row
+    old_discount = row["discount_percent"]
+    old_price = row["final_price"]
 
     if old_discount != deal["discount_percent"]:
         return True
@@ -154,6 +178,16 @@ def block_game(appid: str, title: str):
     conn.close()
 
 
+def unblock_game(appid: str):
+    conn = get_conn()
+    cur = conn.cursor()
+
+    cur.execute("DELETE FROM blocked_games WHERE appid=?", (appid,))
+
+    conn.commit()
+    conn.close()
+
+
 def is_game_blocked(appid: str) -> bool:
     conn = get_conn()
     cur = conn.cursor()
@@ -167,6 +201,22 @@ def is_game_blocked(appid: str) -> bool:
     conn.close()
 
     return bool(row)
+
+
+def list_blocked_games() -> list[dict]:
+    conn = get_conn()
+    cur = conn.cursor()
+
+    cur.execute("""
+    SELECT appid, title
+    FROM blocked_games
+    ORDER BY LOWER(title), appid
+    """)
+
+    rows = cur.fetchall()
+    conn.close()
+
+    return [dict(row) for row in rows]
 
 
 # ------------------------------------------------
@@ -187,7 +237,7 @@ def get_cached_translation(appid: str, original_text: str) -> str | None:
     conn.close()
 
     if row:
-        return row[0]
+        return row["translated_text"]
 
     return None
 
@@ -255,7 +305,6 @@ def create_moderation_item(deal: dict) -> int:
 
 def get_moderation_item(moderation_id: int) -> dict | None:
     conn = get_conn()
-    conn.row_factory = sqlite3.Row
     cur = conn.cursor()
 
     cur.execute(
@@ -389,7 +438,6 @@ def clear_upload_request_message_id(moderation_id: int):
 
 def get_moderation_item_by_upload_request_message_id(message_id: int) -> dict | None:
     conn = get_conn()
-    conn.row_factory = sqlite3.Row
     cur = conn.cursor()
 
     cur.execute("""
@@ -437,7 +485,6 @@ def register_moderation_message(
 
 def get_moderation_messages(moderation_id: int) -> list[dict]:
     conn = get_conn()
-    conn.row_factory = sqlite3.Row
     cur = conn.cursor()
 
     cur.execute("""
@@ -460,6 +507,100 @@ def delete_moderation_messages_records(moderation_id: int):
     DELETE FROM moderation_messages
     WHERE moderation_id=?
     """, (moderation_id,))
+
+    conn.commit()
+    conn.close()
+
+
+# ------------------------------------------------
+# Store catalog / sync state
+# ------------------------------------------------
+
+def get_store_sync_since() -> int:
+    conn = get_conn()
+    cur = conn.cursor()
+
+    cur.execute("SELECT if_modified_since FROM store_sync_state WHERE id=1")
+    row = cur.fetchone()
+    conn.close()
+
+    if not row:
+        return 0
+
+    return int(row["if_modified_since"])
+
+
+def set_store_sync_since(value: int) -> None:
+    conn = get_conn()
+    cur = conn.cursor()
+
+    cur.execute("""
+    INSERT INTO store_sync_state (id, if_modified_since)
+    VALUES (1, ?)
+    ON CONFLICT(id) DO UPDATE SET if_modified_since=excluded.if_modified_since
+    """, (int(value),))
+
+    conn.commit()
+    conn.close()
+
+
+def store_catalog_is_empty() -> bool:
+    conn = get_conn()
+    cur = conn.cursor()
+
+    cur.execute("SELECT 1 FROM store_catalog LIMIT 1")
+    row = cur.fetchone()
+    conn.close()
+
+    return row is None
+
+
+def get_store_catalog_entries(appids: list[str]) -> dict[str, dict]:
+    if not appids:
+        return {}
+
+    conn = get_conn()
+    cur = conn.cursor()
+
+    placeholders = ",".join(["?"] * len(appids))
+    cur.execute(
+        f"""
+        SELECT appid, title, last_modified, price_change_number
+        FROM store_catalog
+        WHERE appid IN ({placeholders})
+        """,
+        appids,
+    )
+
+    rows = cur.fetchall()
+    conn.close()
+
+    return {row["appid"]: dict(row) for row in rows}
+
+
+def upsert_store_catalog_entries(rows: list[dict]) -> None:
+    if not rows:
+        return
+
+    conn = get_conn()
+    cur = conn.cursor()
+
+    cur.executemany("""
+    INSERT INTO store_catalog (appid, title, last_modified, price_change_number)
+    VALUES (?, ?, ?, ?)
+    ON CONFLICT(appid) DO UPDATE SET
+        title=excluded.title,
+        last_modified=excluded.last_modified,
+        price_change_number=excluded.price_change_number
+    """, [
+        (
+            str(row["appid"]),
+            row.get("title", ""),
+            int(row.get("last_modified", 0) or 0),
+            int(row.get("price_change_number", 0) or 0),
+        )
+        for row in rows
+    ])
 
     conn.commit()
     conn.close()

@@ -174,7 +174,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             return
 
         variant_key = parts[2]
-        image_path = get_generated_image_path(moderation_id, f"variant_{variant_key}")
+        image_path = get_generated_image_path(item["title"], item["appid"], f"variant_{variant_key}")
 
         if not os.path.exists(image_path):
             await _safe_edit_status(query, "⚠️ Variant image not found")
@@ -334,7 +334,7 @@ async def upload_image_handler(update: Update, context: ContextTypes.DEFAULT_TYP
 
     register_moderation_message(item["id"], message.chat_id, message.message_id, "user_upload")
 
-    custom_upload_path = get_custom_upload_path(item["id"], ext)
+    custom_upload_path = get_custom_upload_path(item["title"], item["appid"], ext)
     print("[UPLOAD DEBUG] saving upload to:", custom_upload_path)
 
     await photo_file.download_to_drive(custom_upload_path)
@@ -342,11 +342,13 @@ async def upload_image_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     try:
         final_custom_path = generate_post_image(
             appid=item["appid"],
+            title=item["title"],
             final_price=item["final_price"],
             initial_price=item["initial_price"],
             currency=item["currency"],
+            sale_end_text=item.get("sale_end_text", ""),
             custom_background_path=custom_upload_path,
-            output_path=get_generated_image_path(item["id"], "custom"),
+            output_path=get_generated_image_path(item["title"], item["appid"], "custom"),
         )
         print("[UPLOAD DEBUG] generated custom preview:", final_custom_path)
     except Exception as error:
