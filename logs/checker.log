@@ -114,3 +114,6 @@
 2026-03-15 23:21:31,764 | INFO | HTTP Request: POST https://api.telegram.org/bot8796502754:AAED-jY-FVhmPCTU1SyTyWp7AmVbOpngWyI/sendPhoto "HTTP/1.1 200 OK"
 2026-03-15 23:21:33,093 | INFO | HTTP Request: POST https://api.telegram.org/bot8796502754:AAED-jY-FVhmPCTU1SyTyWp7AmVbOpngWyI/sendPhoto "HTTP/1.1 200 OK"
 2026-03-15 23:21:34,278 | INFO | HTTP Request: POST https://api.telegram.org/bot8796502754:AAED-jY-FVhmPCTU1SyTyWp7AmVbOpngWyI/sendMessage "HTTP/1.1 200 OK"
+2026-03-15 23:35:33,692 | INFO | [BOOTSTRAP] Store catalog is empty. Downloading full store catalog...
+2026-03-15 23:35:44,957 | INFO | [BOOTSTRAP] Saved 158930 store items.
+2026-03-15 23:35:44,957 | INFO | [BOOTSTRAP] Run checker again to process only future price/store changes.
