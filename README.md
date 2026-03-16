@@ -262,7 +262,7 @@ CMD:
 
 ## Встановити бібліотеки
 
-    pip install python-telegram-bot requests beautifulsoup4 deep-translator pillow
+    pip install python-telegram-bot requests beautifulsoup4 deep-translator pillow tzdata
 
 ------------------------------------------------------------------------
 
