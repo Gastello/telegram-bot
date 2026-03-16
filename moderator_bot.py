@@ -528,14 +528,18 @@ async def help_fallback_handler(update: Update, context: ContextTypes.DEFAULT_TY
                 clear_upload_request_message_id(item["id"])
                 update_moderation_state(item["id"], "waiting_image")  # back to waiting image
 
-                # Register the user's reply message for cleanup
-                register_moderation_message(item["id"], chat.id, message.message_id, "user_text_reply")
-
                 await cleanup_moderation_chat(context, item["id"])
 
                 updated_item = get_moderation_item(item["id"])
                 if updated_item:
                     await send_final_preview(context, updated_item, chat.id)
+
+                # Delete the user's reply message
+                try:
+                    await context.bot.delete_message(chat_id=chat.id, message_id=message.message_id)
+                except Exception as e:
+                    print(f"Failed to delete user reply: {e}")
+
                 return
             else:
                 await message.reply_text("Текст не може бути порожнім.")
@@ -640,6 +644,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         register_moderation_message(moderation_id, chat_id, prompt.message_id, "upload_prompt")
 
     elif action == "edit_text":
+        await cleanup_moderation_chat(context, moderation_id)
+        
         update_moderation_state(moderation_id, "waiting_custom_text")
 
         current_text = build_post_text(item)
