@@ -14,7 +14,7 @@ from telegram.ext import (
     filters,
 )
 
-from config import BOT_TOKEN, CHANNEL_ID, STEAM_API_KEY
+from config import BOT_TOKEN, MOD_CHAT_ID, CHANNEL_ID, STEAM_API_KEY
 from database import (
     init_db,
     block_game,
@@ -310,27 +310,73 @@ async def send_status_log(
     register_moderation_message(moderation_id, chat_id, sent.message_id, kind)
 
 
-async def cleanup_moderation_chat(context: ContextTypes.DEFAULT_TYPE, moderation_id: int) -> None:
+async def cleanup_moderation_chat(context: ContextTypes.DEFAULT_TYPE, moderation_id: int, keep_preview: bool = False) -> None:
     messages = get_moderation_messages(moderation_id)
+    
+    print(f"[CLEANUP START] moderation_id={moderation_id} messages_count={len(messages)}")
+    
+    deleted_count = 0
+    failed_count = 0
+    skipped_count = 0
 
     for msg in messages:
         kind = msg["kind"]
+        chat_id = msg["chat_id"]
+        message_id = msg["message_id"]
 
+        print(f"[CLEANUP MSG] message_id={message_id} kind={kind} chat_id={chat_id}")
+
+        # Пропустити публіковані/відхилені/заблоковані постови
         if kind in STATUS_KINDS:
+            print(f"[CLEANUP SKIP] message_id={message_id} kind={kind} - status message")
+            continue
+        
+        # Опційно пропустити preview (якщо потрібен для фіналу)
+        if keep_preview and kind == "preview":
+            print(f"[CLEANUP SKIP] message_id={message_id} kind={kind} - keep preview")
+            continue
+
+        # Пропустити видалення в групах/каналах (де chat_id < 0), бо бот може не мати прав
+        # Але дозволити видалення в модераційному чаті (MOD_CHAT_ID)
+        if chat_id < 0 and chat_id != MOD_CHAT_ID:
+            print(f"[CLEANUP SKIP] message_id={message_id} kind={kind} - channel/group chat_id={chat_id}")
+            skipped_count += 1
             continue
 
         try:
             await context.bot.delete_message(
-                chat_id=msg["chat_id"],
-                message_id=msg["message_id"],
+                chat_id=chat_id,
+                message_id=message_id,
             )
+            deleted_count += 1
+            print(f"[CLEANUP] moderation_id={moderation_id} message_id={message_id} kind={kind} deleted")
         except Exception as error:
+            failed_count += 1
             print(
                 f"[CLEANUP WARN] moderation_id={moderation_id} "
-                f"message_id={msg['message_id']} kind={kind}: {error}"
+                f"message_id={message_id} kind={kind} chat_id={chat_id}: {error}"
             )
 
     delete_moderation_messages_records(moderation_id)
+    
+    print(f"[CLEANUP RESULT] moderation_id={moderation_id} deleted={deleted_count} failed={failed_count} skipped={skipped_count}")
+
+
+def cleanup_generated_files(title: str, appid: str | int) -> None:
+    """Видаляє тимчасово згенеровані файли для гри"""
+    try:
+        import glob
+        pattern = os.path.join("generated", f"*{appid}*")
+        files = glob.glob(pattern)
+        
+        for file in files:
+            try:
+                os.remove(file)
+                print(f"[FILE CLEANUP] Deleted {file}")
+            except Exception as e:
+                print(f"[FILE CLEANUP WARN] Could not delete {file}: {e}")
+    except Exception as error:
+        print(f"[FILE CLEANUP ERROR] Cleanup for appid={appid}: {error}")
 
 
 async def _safe_edit_status(query, text: str) -> None:
@@ -342,6 +388,9 @@ async def _safe_edit_status(query, text: str) -> None:
     except Exception:
         if query.message:
             await query.message.reply_text(text)
+
+
+
 
 
 async def send_final_preview(
@@ -463,6 +512,11 @@ async def help_fallback_handler(update: Update, context: ContextTypes.DEFAULT_TY
     if not message or not chat:
         return
 
+    # Реагувати тільки в модераційному чаті
+    if chat.id != MOD_CHAT_ID:
+        print(f"[HELP SKIP] message from chat_id={chat.id}, expected MOD_CHAT_ID={MOD_CHAT_ID}")
+        return
+
     # Check if this is a reply to edit_text_prompt
     if message.reply_to_message:
         reply_message_id = message.reply_to_message.message_id
@@ -473,6 +527,9 @@ async def help_fallback_handler(update: Update, context: ContextTypes.DEFAULT_TY
                 update_custom_text(item["id"], custom_text)
                 clear_upload_request_message_id(item["id"])
                 update_moderation_state(item["id"], "waiting_image")  # back to waiting image
+
+                # Register the user's reply message for cleanup
+                register_moderation_message(item["id"], chat.id, message.message_id, "user_text_reply")
 
                 await cleanup_moderation_chat(context, item["id"])
 
@@ -537,6 +594,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     if chat_id is None:
         return
 
+    # Реагувати тільки в модераційному чаті
+    if chat_id != MOD_CHAT_ID:
+        print(f"[BUTTON SKIP] button from chat_id={chat_id}, expected MOD_CHAT_ID={MOD_CHAT_ID}")
+        await _safe_edit_status(query, "⚠️ Кнопки працюють тільки в модераційному чаті")
+        return
+
     current_state = (item.get("state") or "").strip()
     current_status = (item.get("status") or "").strip()
     if current_state in TERMINAL_STATES or current_status in TERMINAL_STATES:
@@ -556,6 +619,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             return
 
         set_selected_image(moderation_id, variant_key, image_path)
+        
         await cleanup_moderation_chat(context, moderation_id)
 
         updated_item = get_moderation_item(moderation_id)
@@ -563,6 +627,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             await send_final_preview(context, updated_item, chat_id)
 
     elif action == "upload_custom":
+        await cleanup_moderation_chat(context, moderation_id, keep_preview=True)
+        
         update_moderation_state(moderation_id, "waiting_custom_image")
 
         prompt = await context.bot.send_message(
@@ -583,7 +649,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             text=f"Поточний текст поста:\n\n{current_text}\n\nНадішли новий текст reply-ом НА ЦЕ повідомлення."
         )
 
-        set_upload_request_message_id(moderation_id, prompt.message_id)  # reuse this field
+        set_upload_request_message_id(moderation_id, prompt.message_id)
         register_moderation_message(moderation_id, chat_id, prompt.message_id, "edit_text_prompt")
 
     elif action == "post":
@@ -622,6 +688,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         )
 
         await cleanup_moderation_chat(context, moderation_id)
+        cleanup_generated_files(item["title"], item["appid"])
 
     elif action == "reject":
         update_moderation_status(moderation_id, "rejected")
@@ -636,6 +703,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         )
 
         await cleanup_moderation_chat(context, moderation_id)
+        cleanup_generated_files(item["title"], item["appid"])
 
     elif action == "block":
         block_game(item["appid"], item.get("title", ""))
@@ -651,6 +719,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         )
 
         await cleanup_moderation_chat(context, moderation_id)
+        cleanup_generated_files(item["title"], item["appid"])
 
     else:
         await _safe_edit_status(query, f"⚠️ Unknown action: {action}")
@@ -660,6 +729,11 @@ async def upload_image_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     message = update.effective_message
 
     if not message:
+        return
+
+    # Реагувати тільки в модераційному чаті
+    if message.chat_id != MOD_CHAT_ID:
+        print(f"[UPLOAD SKIP] upload from chat_id={message.chat_id}, expected MOD_CHAT_ID={MOD_CHAT_ID}")
         return
 
     if not message.reply_to_message:
