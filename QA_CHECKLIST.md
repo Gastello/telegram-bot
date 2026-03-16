@@ -10,9 +10,11 @@
 - Single-variant post: reject/block/custom image buttons are visible
 - Upload custom image as photo
 - Upload custom image as file document
+- Edit custom text: choose variant -> edit text -> preview -> post
 - Reject and ensure cleanup happens
 - Block and ensure game goes to blacklist
 - Press old buttons after post/reject/block and ensure nothing breaks
+- Manual post generation: /generate APPID -> verify post appears in moderation with all buttons
 
 ## Content edge cases
 - Game with `page_bg_raw` missing but `library_hero` exists

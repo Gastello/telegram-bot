@@ -36,6 +36,9 @@ def translate_text(appid: str, text: str) -> str:
 
 
 def build_post_text(item: dict) -> str:
+    if item.get("custom_text"):
+        return item["custom_text"]
+
     title = escape_html(item["title"])
 
     original_description = item.get("original_description") or item.get("short_description") or ""

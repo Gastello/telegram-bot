@@ -1,4 +1,8 @@
 import os
+import threading
+import time
+import requests
+from deep_translator import GoogleTranslator
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -10,22 +14,25 @@ from telegram.ext import (
     filters,
 )
 
-from config import BOT_TOKEN, CHANNEL_ID
+from config import BOT_TOKEN, CHANNEL_ID, STEAM_API_KEY
 from database import (
     init_db,
     block_game,
     clear_upload_request_message_id,
     delete_moderation_messages_records,
+    get_cached_translation,
     get_last_blocked_game,
     get_moderation_item,
     get_moderation_item_by_upload_request_message_id,
     get_moderation_messages,
     list_blocked_games,
     register_moderation_message,
+    save_translation,
     set_preview_message_id,
     set_selected_image,
     set_upload_request_message_id,
     unblock_game,
+    update_custom_text,
     update_moderation_state,
     update_moderation_status,
 )
@@ -35,6 +42,217 @@ from image_generator import (
     get_generated_image_path,
 )
 from post_formatter import build_post_text
+from steam_store_parser import get_sale_end_text
+from bot import send_to_moderation
+
+
+STEAM_URL = "https://store.steampowered.com/api/appdetails"
+REVIEWS_URL = "https://store.steampowered.com/appreviews"
+
+COUNTRY_CODE = "ua"
+
+DISCOUNT_THRESHOLD = 50
+MIN_TOTAL_REVIEWS = 1000
+MIN_REVIEW_PERCENT = 70.0
+
+MAX_RETRIES = 2
+
+REQUEST_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/122.0.0.0 Safari/537.36"
+    )
+}
+
+
+def make_session() -> requests.Session:
+    session = requests.Session()
+    session.headers.update(REQUEST_HEADERS)
+    return session
+
+
+def translate_description(appid: str, text: str) -> str:
+    if not text:
+        return ""
+
+    cached = get_cached_translation(appid, text)
+    if cached:
+        return cached
+
+    try:
+        translated = GoogleTranslator(source="auto", target="uk").translate(text)
+        save_translation(appid, text, translated)
+        return translated
+    except Exception as error:
+        print(f"translation appid={appid}: {error}")
+        return text
+
+
+def get_json_with_retry(
+    session: requests.Session,
+    url: str,
+    label: str,
+    params: dict | None = None,
+) -> dict[str, Any] | None:
+    for attempt in range(MAX_RETRIES + 1):
+        try:
+            response = session.get(url, params=params, timeout=15)
+
+            if response.status_code == 403:
+                return None
+
+            if response.status_code == 429:
+                if attempt < MAX_RETRIES:
+                    sleep_time = 2 * (attempt + 1)
+                    print(f"[RATE LIMIT] {label}: retry in {sleep_time}s")
+                    time.sleep(sleep_time)
+                    continue
+                return None
+
+            response.raise_for_status()
+            return response.json()
+
+        except requests.RequestException as error:
+            if attempt < MAX_RETRIES:
+                sleep_time = 1.5 * (attempt + 1)
+                print(f"[RETRY] {label}: {error} | retry in {sleep_time}s")
+                time.sleep(sleep_time)
+                continue
+
+            print(f"{label}: {error}")
+            return None
+        except ValueError as error:
+            print(f"{label}: invalid JSON: {error}")
+            return None
+
+    return None
+
+
+def fetch_app_details(session: requests.Session, appid: str) -> dict[str, Any] | None:
+    url = f"{STEAM_URL}?appids={appid}&cc={COUNTRY_CODE}"
+    payload = get_json_with_retry(session, url, f"appdetails appid={appid}")
+    if not payload:
+        return None
+
+    app_block = payload.get(str(appid))
+    if not app_block or not app_block.get("success"):
+        return None
+
+    return app_block.get("data")
+
+
+def fetch_reviews_summary(session: requests.Session, appid: str) -> dict[str, Any] | None:
+    url = f"{REVIEWS_URL}/{appid}?json=1&filter=all&language=all&purchase_type=all&num_per_page=0"
+    payload = get_json_with_retry(session, url, f"reviews appid={appid}")
+    if not payload:
+        return None
+
+    if payload.get("success") != 1:
+        return None
+
+    summary = payload.get("query_summary", {})
+
+    total_positive = int(summary.get("total_positive", 0))
+    total_negative = int(summary.get("total_negative", 0))
+    total_reviews = int(summary.get("total_reviews", 0))
+
+    review_percent = 0.0
+    if total_positive + total_negative > 0:
+        review_percent = round(
+            (total_positive / (total_positive + total_negative)) * 100,
+            2,
+        )
+
+    return {
+        "review_percent": review_percent,
+        "total_reviews": total_reviews,
+        "review_score": summary.get("review_score"),
+        "review_score_desc": summary.get("review_score_desc", ""),
+        "total_positive": total_positive,
+        "total_negative": total_negative,
+    }
+
+
+def build_base_deal(appid: str, data: dict[str, Any]) -> dict[str, Any] | None:
+    price = data.get("price_overview")
+    if not price:
+        return None
+
+    return {
+        "appid": appid,
+        "title": data.get("name", "Unknown"),
+        "type": data.get("type", ""),
+        "discount_percent": int(price.get("discount_percent", 0)),
+        "final_price": price.get("final", 0) / 100,
+        "initial_price": price.get("initial", 0) / 100,
+        "currency": price.get("currency", ""),
+        "header_image": data.get("header_image", ""),
+        "original_description": data.get("short_description", "") or "",
+    }
+
+
+def generate_deal_for_appid(appid: str) -> dict[str, Any] | None:
+    from database import is_game_blocked
+
+    if is_game_blocked(appid):
+        print(f"[BLOCKED] {appid}")
+        return None
+
+    session = make_session()
+    time.sleep(0.35)
+    data = fetch_app_details(session, appid)
+    if not data:
+        print(f"[SKIP] {appid} | no appdetails")
+        return None
+
+    deal = build_base_deal(appid, data)
+    if not deal:
+        print(f"[SKIP] {appid} | no price data")
+        return None
+
+    if deal["type"] != "game":
+        print(f"[SKIP] {appid} | not a game ({deal['type']})")
+        return None
+
+    # Для мануальної генерації не перевіряємо фільтри, щоб дозволити будь-яку гру
+    time.sleep(0.35)
+    reviews = fetch_reviews_summary(session, appid)
+    if not reviews:
+        # Якщо немає reviews, встановимо дефолтні
+        review_percent = 0.0
+        total_reviews = 0
+        review_score_desc = ""
+    else:
+        review_percent = float(reviews.get("review_percent", 0.0))
+        total_reviews = int(reviews.get("total_reviews", 0))
+        review_score_desc = reviews.get("review_score_desc", "")
+
+    sale_end_text = ""
+    try:
+        sale_end_text = get_sale_end_text(appid) or ""
+    except Exception as error:
+        print(f"sale_end appid={appid}: {error}")
+
+    original_description = deal["original_description"]
+    translated_description = translate_description(appid, original_description)
+
+    deal["short_description"] = translated_description
+    deal["translated_description"] = translated_description
+    deal["review_percent"] = review_percent
+    deal["total_reviews"] = total_reviews
+    deal["review_score_desc"] = review_score_desc
+    deal["sale_end_text"] = sale_end_text
+
+    return deal
+
+
+def generate_and_send(appid: str) -> None:
+    deal = generate_deal_for_appid(appid)
+    if deal:
+        send_to_moderation(deal)
+    else:
+        print(f"Failed to generate deal for appid {appid}")
 
 
 TERMINAL_STATES = {"published", "rejected", "blocked"}
@@ -44,7 +262,10 @@ STATUS_KINDS = {"published", "rejected", "blocked"}
 def build_final_preview_keyboard(moderation_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("🚀 Post", callback_data=f"post|{moderation_id}")],
-        [InlineKeyboardButton("📤 Своє фото", callback_data=f"upload_custom|{moderation_id}")],
+        [
+            InlineKeyboardButton("📤 Своє фото", callback_data=f"upload_custom|{moderation_id}"),
+            InlineKeyboardButton("✏️ Редагувати текст", callback_data=f"edit_text|{moderation_id}"),
+        ],
         [
             InlineKeyboardButton("❌ Reject", callback_data=f"reject|{moderation_id}"),
             InlineKeyboardButton("🚫 Block game", callback_data=f"block|{moderation_id}"),
@@ -64,7 +285,8 @@ def build_help_text() -> str:
         "/blacklist — показати чорний список\n"
         "/block APPID — заблокувати гру по appid\n"
         "/unblock APPID — розблокувати гру по appid\n"
-        "/unblock_last — розблокувати останню заблоковану гру"
+        "/unblock_last — розблокувати останню заблоковану гру\n"
+        "/generate APPID — згенерувати пост для гри по appid"
     )
 
 
@@ -218,12 +440,49 @@ async def unblock_last_command(update: Update, context: ContextTypes.DEFAULT_TYP
         await update.effective_message.reply_text("Не вдалося розблокувати останню гру.")
 
 
+async def generate_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not context.args or len(context.args) != 1:
+        await update.effective_message.reply_text("Використання: /generate <appid>")
+        return
+
+    appid = context.args[0]
+    if not appid.isdigit():
+        await update.effective_message.reply_text("appid має бути числом.")
+        return
+
+    await update.effective_message.reply_text(f"Генерую пост для appid {appid}...")
+
+    # Запускаємо в окремому потоці, щоб не блокувати бота
+    threading.Thread(target=generate_and_send, args=(appid,)).start()
+
+
 async def help_fallback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     message = update.effective_message
     chat = update.effective_chat
 
     if not message or not chat:
         return
+
+    # Check if this is a reply to edit_text_prompt
+    if message.reply_to_message:
+        reply_message_id = message.reply_to_message.message_id
+        item = get_moderation_item_by_upload_request_message_id(reply_message_id)
+        if item and item.get("state") == "waiting_custom_text":
+            custom_text = message.text.strip()
+            if custom_text:
+                update_custom_text(item["id"], custom_text)
+                clear_upload_request_message_id(item["id"])
+                update_moderation_state(item["id"], "waiting_image")  # back to waiting image
+
+                await cleanup_moderation_chat(context, item["id"])
+
+                updated_item = get_moderation_item(item["id"])
+                if updated_item:
+                    await send_final_preview(context, updated_item, chat.id)
+                return
+            else:
+                await message.reply_text("Текст не може бути порожнім.")
+                return
 
     await context.bot.send_message(
         chat_id=chat.id,
@@ -313,6 +572,19 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
         set_upload_request_message_id(moderation_id, prompt.message_id)
         register_moderation_message(moderation_id, chat_id, prompt.message_id, "upload_prompt")
+
+    elif action == "edit_text":
+        update_moderation_state(moderation_id, "waiting_custom_text")
+
+        current_text = build_post_text(item)
+
+        prompt = await context.bot.send_message(
+            chat_id=chat_id,
+            text=f"Поточний текст поста:\n\n{current_text}\n\nНадішли новий текст reply-ом НА ЦЕ повідомлення."
+        )
+
+        set_upload_request_message_id(moderation_id, prompt.message_id)  # reuse this field
+        register_moderation_message(moderation_id, chat_id, prompt.message_id, "edit_text_prompt")
 
     elif action == "post":
         selected_image_path = item.get("selected_image_path", "")
@@ -472,6 +744,7 @@ def run_bot() -> None:
     app.add_handler(CommandHandler("block", block_command))
     app.add_handler(CommandHandler("unblock", unblock_command))
     app.add_handler(CommandHandler("unblock_last", unblock_last_command))
+    app.add_handler(CommandHandler("generate", generate_command))
 
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(

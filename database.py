@@ -79,6 +79,15 @@ def init_db():
     )
     """)
 
+    # migration for custom_text
+    cur.execute("PRAGMA table_info(moderation_items)")
+    moderation_cols = [row["name"] for row in cur.fetchall()]
+    if "custom_text" not in moderation_cols:
+        cur.execute("""
+        ALTER TABLE moderation_items
+        ADD COLUMN custom_text TEXT
+        """)
+
     cur.execute("""
     CREATE TABLE IF NOT EXISTS moderation_messages (
         moderation_id INTEGER,
@@ -316,9 +325,10 @@ def create_moderation_item(deal: dict) -> int:
         total_reviews,
         short_description,
         translated_description,
-        sale_end_text
+        sale_end_text,
+        custom_text
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         deal["appid"],
         deal["title"],
@@ -332,6 +342,7 @@ def create_moderation_item(deal: dict) -> int:
         deal.get("short_description"),
         deal.get("translated_description"),
         deal.get("sale_end_text"),
+        None,  # custom_text
     ))
 
     moderation_id = cur.lastrowid
@@ -340,6 +351,19 @@ def create_moderation_item(deal: dict) -> int:
     conn.close()
 
     return moderation_id
+
+
+def update_custom_text(moderation_id: int, custom_text: str) -> None:
+    conn = get_conn()
+    cur = conn.cursor()
+
+    cur.execute(
+        "UPDATE moderation_items SET custom_text=? WHERE id=?",
+        (custom_text, moderation_id),
+    )
+
+    conn.commit()
+    conn.close()
 
 
 def get_moderation_item(moderation_id: int) -> dict | None:
