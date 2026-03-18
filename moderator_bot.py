@@ -21,6 +21,7 @@ from database import (
     clear_upload_request_message_id,
     create_moderation_item,
     delete_moderation_messages_records,
+    delete_moderation_messages_records_by_ids,
     get_cached_translation,
     get_last_blocked_game,
     get_last_published_moderation_item,
@@ -887,7 +888,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                 f"tiktok_variant_{variant_key}",
             )
             set_selected_image(moderation_id, variant_key, image_path)
-            print(f"[TIKTOK CLEANUP WARN] moderation item not found for appid={appid}")
+        else:
+            print(f"[TIKTOK CLEANUP WARN] moderation item not found for moderation_id={moderation_id}")
 
         return
 
