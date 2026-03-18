@@ -83,14 +83,28 @@ VARIANT_SOURCE_MAP = {
     "3": "header_image",
     "4": "capsule_616x353",
     "5": "header_fallback",
+
+    # screenshots
+    "6": "screenshot_0",
+    "7": "screenshot_1",
+    "8": "screenshot_2",
+    "9": "screenshot_3",
+    "10": "screenshot_4",
 }
 
 TIKTOK_VARIANT_SOURCE_MAP = {
     "1": "page_bg_raw",
-    "2": "library_hero", 
-    "3": "screenshot_0",
+    "2": "library_hero",
+    "3": "header_image",
     "4": "capsule_616x353",
-    "5": "screenshot_1",
+    "5": "header_fallback",
+
+    # screenshots
+    "6": "screenshot_0",
+    "7": "screenshot_1",
+    "8": "screenshot_2",
+    "9": "screenshot_3",
+    "10": "screenshot_4",
 }
 
 
@@ -300,6 +314,7 @@ def generate_post_image(
     source_type: str = "auto",
     custom_background_path: str | None = None,
     sale_end_text: str | None = None,
+    screenshots: list[str] | None = None,
     output_path: Optional[str] = None,
 ) -> str:
     background = load_background(
@@ -307,6 +322,7 @@ def generate_post_image(
         header_image_url=header_image_url,
         source_type=source_type,
         custom_background_path=custom_background_path,
+        screenshots=screenshots,
     )
     background = cover_crop(background, CANVAS_WIDTH, BACKGROUND_HEIGHT)
 

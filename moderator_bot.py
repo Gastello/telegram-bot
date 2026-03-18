@@ -857,13 +857,15 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         # Mark this variant as selected
         try:
             if query.message.photo:
+                moderation_item = get_moderation_item(moderation_id)
+                title = moderation_item["title"] if moderation_item else "Unknown"
                 await query.edit_message_caption(
-                    caption=f"✅ Обрано варіант {variant_key} для TikTok",
+                    caption=f"🎬 TikTok · {title}",
                     reply_markup=None
                 )
             else:
                 await query.edit_message_text(
-                    text=f"✅ Обрано варіант {variant_key} для TikTok",
+                    text=f"🎬 TikTok · {title}",
                     reply_markup=None
                 )
         except Exception as e:
