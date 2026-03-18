@@ -384,6 +384,25 @@ def get_moderation_item(moderation_id: int) -> dict | None:
     return dict(row)
 
 
+def get_moderation_item_by_appid(appid: str) -> dict | None:
+    """Get moderation item by appid"""
+    conn = get_conn()
+    cur = conn.cursor()
+
+    cur.execute(
+        "SELECT * FROM moderation_items WHERE appid=?",
+        (appid,),
+    )
+
+    row = cur.fetchone()
+    conn.close()
+
+    if not row:
+        return None
+
+    return dict(row)
+
+
 def update_moderation_state(moderation_id: int, state: str):
     conn = get_conn()
     cur = conn.cursor()
@@ -410,6 +429,26 @@ def update_moderation_status(moderation_id: int, status: str):
 
     conn.commit()
     conn.close()
+
+
+def get_last_published_moderation_item() -> dict | None:
+    """Get the most recently published moderation item"""
+    conn = get_conn()
+    cur = conn.cursor()
+
+    cur.execute("""
+    SELECT * FROM moderation_items
+    WHERE status = 'published'
+    ORDER BY id DESC
+    LIMIT 1
+    """)
+
+    row = cur.fetchone()
+    conn.close()
+
+    if row:
+        return dict(row)
+    return None
 
 
 # ------------------------------------------------
@@ -574,6 +613,22 @@ def delete_moderation_messages_records(moderation_id: int):
     conn.commit()
     conn.close()
 
+def delete_moderation_messages_records_by_ids(message_ids: list[int]) -> None:
+    if not message_ids:
+        return
+
+    conn = get_conn()  # ← ОСЬ ТУТ ВАЖЛИВО
+    cur = conn.cursor()
+
+    placeholders = ",".join("?" for _ in message_ids)
+
+    cur.execute(
+        f"DELETE FROM moderation_messages WHERE message_id IN ({placeholders})",
+        message_ids,
+    )
+
+    conn.commit()
+    conn.close()
 
 # ------------------------------------------------
 # Store catalog / sync state

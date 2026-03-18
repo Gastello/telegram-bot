@@ -12,6 +12,21 @@ BACKGROUND_HEIGHT = 1100
 
 COLOR_TEXT = "#B8ED15"
 
+MONTHS_UA_TO_NUM = {
+    "січня": 1,
+    "лютого": 2,
+    "березня": 3,
+    "квітня": 4,
+    "травня": 5,
+    "червня": 6,
+    "липня": 7,
+    "серпня": 8,
+    "вересня": 9,
+    "жовтня": 10,
+    "листопада": 11,
+    "грудня": 12,
+}
+
 DATE_FONT_SIZE = 48
 DATE_LEFT = 20
 DATE_TOP = 44
@@ -23,9 +38,33 @@ OLD_PRICE_BOTTOM = 20
 NEW_PRICE_FONT_SIZE = 96
 NEW_PRICE_BOTTOM = 84
 
+# TikTok image constants
+TIKTOK_CANVAS_WIDTH = 1280
+TIKTOK_CANVAS_HEIGHT = 1600
+TIKTOK_GAME_IMAGE_WIDTH = 1280
+TIKTOK_GAME_IMAGE_HEIGHT = 1280
+TIKTOK_GAME_IMAGE_TOP_OFFSET = 200
+
+TIKTOK_DISCOUNT_PRICE_FONT_SIZE = 48
+TIKTOK_DISCOUNT_PRICE_BOTTOM = 135
+
+TIKTOK_OLD_PRICE_FONT_SIZE = 32
+TIKTOK_OLD_PRICE_LEFT = 160
+TIKTOK_OLD_PRICE_BOTTOM = 80
+
+TIKTOK_SALE_END_FONT_SIZE = 32
+TIKTOK_SALE_END_RIGHT = 160
+TIKTOK_SALE_END_BOTTOM = 80
+
+TIKTOK_TITLE_FONT_SIZE = 40
+TIKTOK_TITLE_SIDE_PADDING = 160
+TIKTOK_TITLE_SHADOW_BLUR = 10
+TIKTOK_TITLE_SHADOW_OFFSET = (0, 0)  # Will be applied as filter
+
 ASSETS_DIR = "assets"
 LAYOUT_PATH = os.path.join(ASSETS_DIR, "layout.png")
 FONT_PATH = os.path.join(ASSETS_DIR, "PressStart2P-Regular.ttf")
+TIKTOK_TEMPLATE_PATH = os.path.join(ASSETS_DIR, "tiktok.png")
 
 OUTPUT_DIR = "generated"
 os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -42,21 +81,16 @@ VARIANT_SOURCE_MAP = {
     "1": "page_bg_raw",
     "2": "library_hero",
     "3": "header_image",
+    "4": "capsule_616x353",
+    "5": "header_fallback",
 }
 
-MONTHS_UA_TO_NUM = {
-    "січня": "01",
-    "лютого": "02",
-    "березня": "03",
-    "квітня": "04",
-    "травня": "05",
-    "червня": "06",
-    "липня": "07",
-    "серпня": "08",
-    "вересня": "09",
-    "жовтня": "10",
-    "листопада": "11",
-    "грудня": "12",
+TIKTOK_VARIANT_SOURCE_MAP = {
+    "1": "page_bg_raw",
+    "2": "library_hero", 
+    "3": "screenshot_0",
+    "4": "capsule_616x353",
+    "5": "screenshot_1",
 }
 
 
@@ -128,13 +162,22 @@ def get_background_candidates(appid: str, header_image_url: str = "") -> list[st
     ]
 
 
-def get_background_url_by_source(appid: str, source_type: str, header_image_url: str = "") -> str:
+def get_background_url_by_source(appid: str, source_type: str, header_image_url: str = "", screenshots: list[str] | None = None) -> str:
     if source_type == "page_bg_raw":
         return f"https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/{appid}/page_bg_raw.jpg"
     if source_type == "library_hero":
         return f"https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/{appid}/library_hero.jpg"
     if source_type == "header_image":
         return header_image_url or f"https://cdn.cloudflare.steamstatic.com/steam/apps/{appid}/header.jpg"
+    if source_type == "capsule_616x353":
+        return f"https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/{appid}/capsule_616x353.jpg"
+    if source_type == "header_fallback":
+        return f"https://cdn.cloudflare.steamstatic.com/steam/apps/{appid}/header.jpg"
+    if source_type.startswith("screenshot_"):
+        idx = int(source_type.split("_")[1])
+        if screenshots and idx < len(screenshots):
+            return screenshots[idx]
+        return f"https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/{appid}/page_bg_raw.jpg"
 
     candidates = [u for u in get_background_candidates(appid, header_image_url) if u and u.strip()]
     if not candidates:
@@ -147,6 +190,7 @@ def load_background(
     header_image_url: str = "",
     source_type: str = "auto",
     custom_background_path: str | None = None,
+    screenshots: list[str] | None = None,
 ) -> Image.Image:
     if custom_background_path:
         return Image.open(custom_background_path).convert("RGBA")
@@ -160,7 +204,7 @@ def load_background(
                 return image
         raise RuntimeError(f"Could not load background for appid={appid}")
 
-    url = get_background_url_by_source(appid, source_type, header_image_url)
+    url = get_background_url_by_source(appid, source_type, header_image_url, screenshots)
     image = download_image(url)
     if image is None:
         raise RuntimeError(f"Could not load {source_type} background for appid={appid}")
@@ -197,7 +241,7 @@ def format_sale_end_for_image(sale_end_text: str | None) -> str:
         month_word = match_words.group(2)
         month_num = MONTHS_UA_TO_NUM.get(month_word)
         if month_num:
-            return f"до {day:02d}.{month_num}"
+            return f"до {day:02d}.{month_num:02d}"
 
     return ""
 
@@ -293,4 +337,244 @@ def generate_post_image(
         output_path = get_generated_image_path(title, appid, "final")
 
     canvas.save(output_path)
+    return output_path
+
+
+def draw_text_with_strikethrough(
+    draw: ImageDraw.ImageDraw,
+    position: tuple,
+    text: str,
+    font: ImageFont.FreeTypeFont,
+    fill: str,
+    anchor: str = "lm",
+) -> tuple:
+    """Draw text with strikethrough line"""
+    bbox = draw.textbbox((0, 0), text, font=font)
+    text_w = bbox[2] - bbox[0]
+    text_h = bbox[3] - bbox[1]
+
+    draw.text(position, text, font=font, fill=fill, anchor=anchor)
+
+    # Calculate strikethrough position
+    x, y = position
+    
+    if anchor == "lm":  # Left middle
+        line_start_x = x
+        line_end_x = x + text_w
+        line_y = y
+    elif anchor == "rm":  # Right middle
+        line_start_x = x - text_w
+        line_end_x = x
+        line_y = y
+    elif anchor == "mm":  # Center middle
+        line_start_x = x - text_w // 2
+        line_end_x = x + text_w // 2
+        line_y = y
+    else:
+        line_start_x = x
+        line_end_x = x + text_w
+        line_y = y + text_h // 2
+
+    draw.line(
+        [(line_start_x, line_y), (line_end_x, line_y)],
+        fill=fill,
+        width=3,
+    )
+
+    return (text_w, text_h)
+
+
+def draw_text_with_shadow(
+    draw: ImageDraw.ImageDraw,
+    position: tuple,
+    text: str,
+    font: ImageFont.FreeTypeFont,
+    fill: str,
+    shadow_color: str = "#000000",
+    shadow_blur: int = 10,
+    anchor: str = "mm",
+) -> None:
+    """Draw text with shadow effect"""
+    # Draw shadow by drawing the text multiple times with slight offsets
+    for offset_x in range(-shadow_blur, shadow_blur + 1):
+        for offset_y in range(-shadow_blur, shadow_blur + 1):
+            if offset_x == 0 and offset_y == 0:
+                continue
+            # Calculate distance from center for shadow fade effect
+            distance = (offset_x ** 2 + offset_y ** 2) ** 0.5
+            if distance > shadow_blur * 0.7:  # Only draw outer shadow
+                shadow_pos = (position[0] + offset_x, position[1] + offset_y)
+                draw.text(shadow_pos, text, font=font, fill=shadow_color, anchor=anchor)
+
+    # Draw main text on top
+    draw.text(position, text, font=font, fill=fill, anchor=anchor)
+
+
+def generate_tiktok_image(
+    appid: str,
+    title: str,
+    final_price: float,
+    initial_price: float,
+    currency: str,
+    header_image_url: str = "",
+    sale_end_text: str | None = None,
+    source_type: str = "auto",
+    custom_background_path: str | None = None,
+    screenshots: list[str] | None = None,
+    output_path: Optional[str] = None,
+) -> str:
+    """Generate TikTok-style vertical image (1080x1920)"""
+    
+    if output_path is None:
+        output_path = get_generated_image_path(title, appid, "tiktok")
+
+    # Load template
+    if not os.path.exists(TIKTOK_TEMPLATE_PATH):
+        raise RuntimeError(f"TikTok template not found: {TIKTOK_TEMPLATE_PATH}")
+
+    template = Image.open(TIKTOK_TEMPLATE_PATH).convert("RGBA")
+    
+    # Resize template if needed
+    if template.size != (TIKTOK_CANVAS_WIDTH, TIKTOK_CANVAS_HEIGHT):
+        template = template.resize((TIKTOK_CANVAS_WIDTH, TIKTOK_CANVAS_HEIGHT), Image.Resampling.LANCZOS)
+
+    canvas = Image.new("RGBA", (TIKTOK_CANVAS_WIDTH, TIKTOK_CANVAS_HEIGHT), (0, 0, 0, 255))
+
+    # Load and position game image FIRST (under the template)
+    try:
+        game_image = load_background(appid, header_image_url, source_type=source_type, custom_background_path=custom_background_path, screenshots=screenshots)
+        game_image = cover_crop(game_image, TIKTOK_GAME_IMAGE_WIDTH, TIKTOK_GAME_IMAGE_HEIGHT)
+        
+        # Position at specified offset from bottom
+        game_image_y = TIKTOK_GAME_IMAGE_TOP_OFFSET
+        canvas.alpha_composite(game_image, (0, game_image_y))
+    except Exception as error:
+        print(f"[TIKTOK IMG] Error loading game image: {error}")
+        # Continue without game image
+
+    # Load template and composite it OVER the game image
+    canvas.alpha_composite(template, (0, 0))
+
+    # Create drawing context
+    draw = ImageDraw.Draw(canvas)
+
+    # Load fonts
+    discount_price_font = load_font(TIKTOK_DISCOUNT_PRICE_FONT_SIZE)
+    old_price_font = load_font(TIKTOK_OLD_PRICE_FONT_SIZE)
+    title_font = load_font(TIKTOK_TITLE_FONT_SIZE)
+    sale_end_font = load_font(TIKTOK_SALE_END_FONT_SIZE)
+
+    # Format prices and dates
+    discount_price_text = format_price_for_image(final_price, currency)
+    old_price_text = format_price_for_image(initial_price, currency)
+    sale_end_text_formatted = format_sale_end_for_image(sale_end_text)
+
+    # Draw discount price (centered horizontally, at specified bottom offset)
+
+    # --- NEW PRICE (centered, bottom offset) ---
+    bbox = draw.textbbox((0, 0), discount_price_text, font=discount_price_font)
+    text_h = bbox[3] - bbox[1]
+
+    discount_x = TIKTOK_CANVAS_WIDTH // 2
+    discount_y = TIKTOK_CANVAS_HEIGHT - TIKTOK_DISCOUNT_PRICE_BOTTOM - text_h
+
+    draw.text(
+        (discount_x, discount_y),
+        discount_price_text,
+        font=discount_price_font,
+        fill=COLOR_TEXT,
+        anchor="mt",  # middle-top
+    )
+
+    # --- OLD PRICE (left, bottom offset) ---
+    bbox = draw.textbbox((0, 0), old_price_text, font=old_price_font)
+    text_h = bbox[3] - bbox[1]
+
+    old_price_x = TIKTOK_OLD_PRICE_LEFT
+    old_price_y = TIKTOK_CANVAS_HEIGHT - TIKTOK_OLD_PRICE_BOTTOM - text_h
+
+    draw_text_with_strikethrough(
+        draw,
+        (old_price_x, old_price_y),
+        old_price_text,
+        old_price_font,
+        COLOR_TEXT,
+        anchor="lm",
+    )
+
+
+    # --- SALE END DATE (right, bottom offset) ---
+    if sale_end_text_formatted:
+        bbox = draw.textbbox((0, 0), sale_end_text_formatted, font=sale_end_font)
+        text_h = bbox[3] - bbox[1]
+
+        sale_end_x = TIKTOK_CANVAS_WIDTH - TIKTOK_SALE_END_RIGHT
+        sale_end_y = TIKTOK_CANVAS_HEIGHT - TIKTOK_SALE_END_BOTTOM - text_h
+
+        draw.text(
+            (sale_end_x, sale_end_y),
+            sale_end_text_formatted,
+            font=sale_end_font,
+            fill=COLOR_TEXT,
+            anchor="rm",
+        )
+
+
+    # --- TITLE (centered + padding) ---
+    title_x = TIKTOK_CANVAS_WIDTH // 2
+    title_y = TIKTOK_CANVAS_HEIGHT // 2
+
+    max_width = TIKTOK_CANVAS_WIDTH - (TIKTOK_TITLE_SIDE_PADDING * 2)
+
+    def wrap_text(draw, text, font, max_width):
+        words = text.split()
+        lines = []
+        current_line = ""
+
+        for word in words:
+            test_line = f"{current_line} {word}".strip()
+            bbox = draw.textbbox((0, 0), test_line, font=font)
+            width = bbox[2] - bbox[0]
+
+            if width <= max_width:
+                current_line = test_line
+            else:
+                if current_line:
+                    lines.append(current_line)
+                current_line = word
+
+        if current_line:
+            lines.append(current_line)
+
+        return lines
+
+    lines = wrap_text(draw, title, title_font, max_width)
+
+    line_height_multiplier = 1.4
+
+    # Висота одного рядка
+    bbox = draw.textbbox((0, 0), "Ay", font=title_font)
+    line_height = int((bbox[3] - bbox[1]) * line_height_multiplier)
+
+    # Загальна висота блоку
+    total_height = line_height * len(lines)
+
+    start_y = title_y - total_height // 2
+
+    for i, line in enumerate(lines):
+        y = start_y + i * line_height
+
+        draw_text_with_shadow(
+            draw,
+            (title_x, y),
+            line,
+            title_font,
+            COLOR_TEXT,
+            shadow_color="#000000",
+            shadow_blur=TIKTOK_TITLE_SHADOW_BLUR,
+            anchor="mm",
+        )
+
+    canvas.save(output_path)
+    print(f"[TIKTOK IMG] Generated TikTok image: {output_path}")
     return output_path

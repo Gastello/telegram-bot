@@ -19,10 +19,13 @@ from database import (
     init_db,
     block_game,
     clear_upload_request_message_id,
+    create_moderation_item,
     delete_moderation_messages_records,
     get_cached_translation,
     get_last_blocked_game,
+    get_last_published_moderation_item,
     get_moderation_item,
+    get_moderation_item_by_appid,
     get_moderation_item_by_upload_request_message_id,
     get_moderation_messages,
     list_blocked_games,
@@ -38,12 +41,14 @@ from database import (
 )
 from image_generator import (
     generate_post_image,
+    generate_tiktok_image,
     get_custom_upload_path,
     get_generated_image_path,
+    TIKTOK_VARIANT_SOURCE_MAP,
 )
 from post_formatter import build_post_text
 from steam_store_parser import get_sale_end_text
-from bot import send_to_moderation
+from bot import send_to_moderation, safe_send_photo
 
 
 STEAM_URL = "https://store.steampowered.com/api/appdetails"
@@ -234,6 +239,18 @@ def generate_deal_for_appid(appid: str) -> dict[str, Any] | None:
     except Exception as error:
         print(f"sale_end appid={appid}: {error}")
 
+    # Extract screenshot URLs from app data
+    screenshots = []
+    try:
+        if data.get("screenshots"):
+            screenshots = [
+                img.get("path_full", "")
+                for img in data["screenshots"][:5]  # Take first 5 screenshots
+                if img.get("path_full")
+            ]
+    except Exception as error:
+        print(f"screenshots appid={appid}: {error}")
+
     original_description = deal["original_description"]
     translated_description = translate_description(appid, original_description)
 
@@ -243,6 +260,7 @@ def generate_deal_for_appid(appid: str) -> dict[str, Any] | None:
     deal["total_reviews"] = total_reviews
     deal["review_score_desc"] = review_score_desc
     deal["sale_end_text"] = sale_end_text
+    deal["screenshots"] = screenshots
 
     return deal
 
@@ -273,9 +291,40 @@ def build_final_preview_keyboard(moderation_id: int) -> InlineKeyboardMarkup:
     ])
 
 
-def build_unblock_keyboard(appid: str) -> InlineKeyboardMarkup:
+def build_tiktok_variant_keyboard(
+    appid: str,
+    variant_key: str,
+    single_variant: bool,
+) -> InlineKeyboardMarkup:
+    if single_variant:
+        return InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton(
+                    "✅ Обрати цей варіант",
+                    callback_data=f"choose_tiktok_variant|{appid}|{variant_key}",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "📤 Своє фото",
+                    callback_data=f"upload_tiktok_custom|{appid}",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "❌ Reject",
+                    callback_data=f"reject_tiktok|{appid}",
+                ),
+            ],
+        ])
+
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔓 Unblock", callback_data=f"unblock_game|{appid}")]
+        [
+            InlineKeyboardButton(
+                "✅ Обрати цей варіант",
+                callback_data=f"choose_tiktok_variant|{appid}|{variant_key}",
+            )
+        ]
     ])
 
 
@@ -286,7 +335,9 @@ def build_help_text() -> str:
         "/block APPID — заблокувати гру по appid\n"
         "/unblock APPID — розблокувати гру по appid\n"
         "/unblock_last — розблокувати останню заблоковану гру\n"
-        "/generate APPID — згенерувати пост для гри по appid"
+        "/generate APPID — згенерувати пост для гри по appid\n"
+        "/tiktok APPID — згенерувати TikTok-картинку для гри по appid\n"
+        "/tiktok_last — згенерувати TikTok-картинку для останнього опублікованого поста"
     )
 
 
@@ -361,6 +412,45 @@ async def cleanup_moderation_chat(context: ContextTypes.DEFAULT_TYPE, moderation
     
     print(f"[CLEANUP RESULT] moderation_id={moderation_id} deleted={deleted_count} failed={failed_count} skipped={skipped_count}")
 
+
+async def cleanup_tiktok_variants(
+        context: ContextTypes.DEFAULT_TYPE,
+        moderation_id: int,
+        keep_message_id: int | None = None,
+    ) -> None:
+        """Delete all TikTok variant messages except selected one"""
+        
+        messages = get_moderation_messages(moderation_id)
+
+        deleted_ids = []
+
+        for msg in messages:
+            kind = msg["kind"]
+
+            if not kind.startswith("tiktok_variant_"):
+                continue
+
+            message_id = msg["message_id"]
+            chat_id = msg["chat_id"]
+
+            # Пропускаємо вибраний
+            if keep_message_id and message_id == keep_message_id:
+                continue
+
+            try:
+                await context.bot.delete_message(
+                    chat_id=chat_id,
+                    message_id=message_id,
+                )
+                deleted_ids.append(message_id)
+                print(f"[TIKTOK CLEANUP] deleted {message_id}")
+
+            except Exception as e:
+                print(f"[TIKTOK CLEANUP WARN] {message_id}: {e}")
+
+        # ❗ ВАЖЛИВО: чистимо записи з БД
+        if deleted_ids:
+            delete_moderation_messages_records_by_ids(deleted_ids)
 
 def cleanup_generated_files(title: str, appid: str | int) -> None:
     """Видаляє тимчасово згенеровані файли для гри"""
@@ -505,6 +595,181 @@ async def generate_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     threading.Thread(target=generate_and_send, args=(appid,)).start()
 
 
+async def tiktok_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not context.args or len(context.args) != 1:
+        await update.effective_message.reply_text("Використання: /tiktok <appid>")
+        return
+
+    appid = context.args[0]
+    if not appid.isdigit():
+        await update.effective_message.reply_text("appid має бути числом.")
+        return
+
+    await update.effective_message.reply_text(f"Генерую TikTok-картинку для appid {appid}...")
+
+    # Запускаємо в окремому потоці, щоб не блокувати бота
+    threading.Thread(target=generate_tiktok_for_appid, args=(appid,)).start()
+
+
+async def tiktok_last_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await update.effective_message.reply_text("Генерую TikTok-картинку для останнього опублікованого поста...")
+
+    # Запускаємо в окремому потоці, щоб не блокувати бота
+    threading.Thread(target=generate_tiktok_for_last_published).start()
+
+
+def generate_tiktok_for_appid(appid: str) -> None:
+    """Generate TikTok image variants for specific appid"""
+    try:
+        # Get deal data for the appid
+        deal = generate_deal_for_appid(appid)
+        if not deal:
+            print(f"[TIKTOK] Failed to generate deal for appid {appid}")
+            return
+
+        # Generate TikTok variants
+        # Create or get moderation item for TikTok generation
+        moderation_item = get_moderation_item_by_appid(appid)
+        if moderation_item:
+            moderation_id = moderation_item['id']
+        else:
+            # Create a temporary moderation item for TikTok generation
+            moderation_id = create_moderation_item(deal)
+        
+        generate_tiktok_variants(deal, moderation_id)
+
+    except Exception as error:
+        print(f"[TIKTOK ERROR] Failed to generate TikTok variants for appid {appid}: {error}")
+
+
+def generate_tiktok_for_last_published() -> None:
+    """Generate TikTok image variants for the last published moderation item"""
+    try:
+        # Get the last published item
+        item = get_last_published_moderation_item()
+        if not item:
+            print("[TIKTOK] No published items found")
+            return
+
+        # Convert moderation item to deal format
+        deal = {
+            "appid": item["appid"],
+            "title": item["title"],
+            "final_price": item["final_price"],
+            "initial_price": item["initial_price"],
+            "currency": item["currency"],
+            "header_image": item.get("header_image", ""),
+            "sale_end_text": item.get("sale_end_text", ""),
+        }
+
+        # Fetch screenshots from Steam API
+        try:
+            session = make_session()
+            data = fetch_app_details(session, item["appid"])
+            if data and data.get("screenshots"):
+                screenshots = [
+                    img.get("path_full", "")
+                    for img in data["screenshots"][:5]
+                    if img.get("path_full")
+                ]
+                deal["screenshots"] = screenshots
+            else:
+                deal["screenshots"] = []
+        except Exception as error:
+            print(f"[TIKTOK] Failed to fetch screenshots for {item['appid']}: {error}")
+            deal["screenshots"] = []
+
+        # Generate TikTok variants
+        generate_tiktok_variants(deal, item["id"])
+
+    except Exception as error:
+        print(f"[TIKTOK ERROR] Failed to generate TikTok variants for last published item: {error}")
+
+
+def generate_tiktok_variants(deal: dict, moderation_id: int) -> None:
+    """Generate multiple TikTok image variants and send to moderation chat"""
+    import asyncio
+    from telegram import Bot
+    
+    async def _generate_and_send():
+        bot = Bot(token=BOT_TOKEN)
+        appid = deal["appid"]
+        
+        generated_variants: list[dict] = []
+
+        for variant_key, source_type in TIKTOK_VARIANT_SOURCE_MAP.items():
+            image_path = None
+
+            try:
+                image_path = generate_tiktok_image(
+                    appid=deal["appid"],
+                    title=deal["title"],
+                    final_price=deal["final_price"],
+                    initial_price=deal["initial_price"],
+                    currency=deal["currency"],
+                    header_image_url=deal.get("header_image", ""),
+                    sale_end_text=deal.get("sale_end_text", ""),
+                    source_type=source_type,
+                    screenshots=deal.get("screenshots", []),
+                    output_path=get_generated_image_path(
+                        deal["title"],
+                        deal["appid"],
+                        f"tiktok_variant_{variant_key}",
+                    ),
+                )
+            except Exception as error:
+                print(
+                    f"[TIKTOK VARIANT ERROR] appid={appid} "
+                    f"variant={variant_key}: {error}"
+                )
+
+            if not image_path:
+                continue
+
+            generated_variants.append({
+                "variant_key": variant_key,
+                "image_path": image_path,
+            })
+
+        if not generated_variants:
+            print(f"[TIKTOK] No TikTok variants generated for appid={appid}")
+            return
+
+        single_variant = len(generated_variants) == 1
+
+        for item in generated_variants:
+            variant_key = item["variant_key"]
+            image_path = item["image_path"]
+
+            keyboard = build_tiktok_variant_keyboard(
+                appid=appid,
+                variant_key=variant_key,
+                single_variant=single_variant,
+            )
+
+            try:
+                with open(image_path, "rb") as image_file:
+                    photo_bytes = image_file.read()
+
+                sent = await safe_send_photo(
+                    bot,
+                    chat_id=MOD_CHAT_ID,
+                    photo_bytes=photo_bytes,
+                    filename=f"tiktok_{appid}_{variant_key}.png",
+                    caption=f"🎬 TikTok · {deal['title']} · варіант {variant_key}",
+                    reply_markup=keyboard,
+                )
+                
+                # Register message for cleanup
+                register_moderation_message(moderation_id, MOD_CHAT_ID, sent.message_id, f"tiktok_variant_{variant_key}")
+                
+            except Exception as error:
+                print(f"[TIKTOK SEND ERROR] Failed to send variant {variant_key}: {error}")
+
+    # Run the async function
+    asyncio.run(_generate_and_send())
+
+
 async def help_fallback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     message = update.effective_message
     chat = update.effective_chat
@@ -512,12 +777,20 @@ async def help_fallback_handler(update: Update, context: ContextTypes.DEFAULT_TY
     if not message or not chat:
         return
 
-    # Реагувати тільки в модераційному чаті
-    if chat.id != MOD_CHAT_ID:
-        print(f"[HELP SKIP] message from chat_id={chat.id}, expected MOD_CHAT_ID={MOD_CHAT_ID}")
+    # Реагувати тільки в особистому чаті з ботом або в модераційному чаті для обробки reply
+    if chat.type != 'private' and chat.id != MOD_CHAT_ID:
+        print(f"[HELP SKIP] message from chat_id={chat.id}, type={chat.type}")
         return
 
-    # Check if this is a reply to edit_text_prompt
+    # В особистому чаті з ботом завжди показувати список команд
+    if chat.type == 'private':
+        await context.bot.send_message(
+            chat_id=chat.id,
+            text=build_help_text(),
+        )
+        return
+
+    # В модераційному чаті перевіряти, чи це reply до edit_text_prompt
     if message.reply_to_message:
         reply_message_id = message.reply_to_message.message_id
         item = get_moderation_item_by_upload_request_message_id(reply_message_id)
@@ -545,6 +818,7 @@ async def help_fallback_handler(update: Update, context: ContextTypes.DEFAULT_TY
                 await message.reply_text("Текст не може бути порожнім.")
                 return
 
+    # Якщо не reply і не приватний чат, показати help
     await context.bot.send_message(
         chat_id=chat.id,
         text=build_help_text(),
@@ -566,6 +840,110 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return
 
     action = parts[0]
+
+    if action == "choose_tiktok_variant":
+        if len(parts) < 3:
+            await _safe_edit_status(query, "⚠️ No TikTok variant selected")
+            return
+
+        appid = parts[1]
+        variant_key = parts[2]
+        
+        chat_id = query.message.chat_id if query.message else None
+        if chat_id is None or chat_id != MOD_CHAT_ID:
+            await _safe_edit_status(query, "⚠️ TikTok variant selection works only in moderation chat")
+            return
+
+        # Mark this variant as selected
+        try:
+            if query.message.photo:
+                await query.edit_message_caption(
+                    caption=f"✅ Обрано варіант {variant_key} для TikTok · appid {appid}",
+                    reply_markup=None
+                )
+            else:
+                await query.edit_message_text(
+                    text=f"✅ Обрано варіант {variant_key} для TikTok · appid {appid}",
+                    reply_markup=None
+                )
+        except Exception as e:
+            print(f"[TIKTOK SELECT ERROR] {e}")
+
+        # Clean up other TikTok variant messages for this appid
+        moderation_item = get_moderation_item_by_appid(appid)
+        if moderation_item:
+            await cleanup_tiktok_variants(
+                context,
+                moderation_item["id"],
+                keep_message_id=query.message.message_id,
+            )
+        else:
+            print(f"[TIKTOK CLEANUP WARN] moderation item not found for appid={appid}")
+
+        return
+
+    if action == "upload_tiktok_custom":
+        if len(parts) < 2:
+            await _safe_edit_status(query, "⚠️ No appid for TikTok custom upload")
+            return
+
+        appid = parts[1]
+        chat_id = query.message.chat_id if query.message else None
+        if chat_id is None or chat_id != MOD_CHAT_ID:
+            await _safe_edit_status(query, "⚠️ TikTok custom upload works only in moderation chat")
+            return
+
+        # Get moderation item by appid
+        moderation_item = get_moderation_item_by_appid(appid)
+        if not moderation_item:
+            await _safe_edit_status(query, f"⚠️ No moderation item found for appid {appid}")
+            return
+
+        moderation_id = moderation_item['id']
+
+        # Clean up variant messages
+        await cleanup_tiktok_variants(context, moderation_id, keep_message_id=None)
+
+        # Set up custom upload for TikTok
+        update_moderation_state(moderation_id, "waiting_custom_image")
+
+        prompt = await context.bot.send_message(
+            chat_id=chat_id,
+            text=f"Надішли своє фото для TikTok appid {appid} reply-ом НА ЦЕ повідомлення."
+        )
+
+        set_upload_request_message_id(moderation_id, prompt.message_id)
+        register_moderation_message(moderation_id, chat_id, prompt.message_id, "tiktok_upload_prompt")
+
+        return
+
+    if action == "reject_tiktok":
+        if len(parts) < 2:
+            await _safe_edit_status(query, "⚠️ No appid for TikTok reject")
+            return
+
+        appid = parts[1]
+        chat_id = query.message.chat_id if query.message else None
+        if chat_id is None or chat_id != MOD_CHAT_ID:
+            await _safe_edit_status(query, "⚠️ TikTok reject works only in moderation chat")
+            return
+
+        # Get moderation item by appid to get title
+        moderation_item = get_moderation_item_by_appid(appid)
+        title = moderation_item['title'] if moderation_item else f"appid_{appid}"
+
+        # Clean up all TikTok variant messages for this appid
+        await cleanup_tiktok_variants(context, moderation_item['id'], keep_message_id=None)
+
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text=f"❌ TikTok генерація для appid {appid} відхилена"
+        )
+
+        # Clean up generated files
+        cleanup_generated_files(title, appid)
+
+        return
 
     if action == "unblock_game":
         if len(parts) < 2:
@@ -751,6 +1129,14 @@ async def upload_image_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     if not item:
         return
 
+    # Check if this is a TikTok custom upload
+    is_tiktok_upload = False
+    messages = get_moderation_messages(item["id"])
+    for msg in messages:
+        if msg['message_id'] == reply_message_id and msg['kind'] == 'tiktok_upload_prompt':
+            is_tiktok_upload = True
+            break
+
     current_state = (item.get("state") or "").strip()
     current_status = (item.get("status") or "").strip()
     if current_state in TERMINAL_STATES or current_status in TERMINAL_STATES:
@@ -786,23 +1172,37 @@ async def upload_image_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     await photo_file.download_to_drive(custom_upload_path)
 
     try:
-        final_custom_path = generate_post_image(
-            appid=item["appid"],
-            title=item["title"],
-            final_price=item["final_price"],
-            initial_price=item["initial_price"],
-            currency=item["currency"],
-            sale_end_text=item.get("sale_end_text", ""),
-            custom_background_path=custom_upload_path,
-            output_path=get_generated_image_path(item["title"], item["appid"], "custom"),
-        )
+        if is_tiktok_upload:
+            final_custom_path = generate_tiktok_image(
+                appid=item["appid"],
+                title=item["title"],
+                final_price=item["final_price"],
+                initial_price=item["initial_price"],
+                currency=item["currency"],
+                header_image_url=item.get("header_image", ""),
+                sale_end_text=item.get("sale_end_text", ""),
+                source_type="auto",  # Use custom background
+                custom_background_path=custom_upload_path,
+                output_path=get_generated_image_path(item["title"], item["appid"], "tiktok_custom"),
+            )
+        else:
+            final_custom_path = generate_post_image(
+                appid=item["appid"],
+                title=item["title"],
+                final_price=item["final_price"],
+                initial_price=item["initial_price"],
+                currency=item["currency"],
+                sale_end_text=item.get("sale_end_text", ""),
+                custom_background_path=custom_upload_path,
+                output_path=get_generated_image_path(item["title"], item["appid"], "custom"),
+            )
     except Exception as error:
         await message.reply_text(f"⚠️ Не вдалося обробити кастомне фото: {error}")
         return
 
     set_selected_image(
         item["id"],
-        "custom",
+        "tiktok_custom" if is_tiktok_upload else "custom",
         final_custom_path,
         custom_image_path=custom_upload_path,
     )
@@ -825,6 +1225,8 @@ def run_bot() -> None:
     app.add_handler(CommandHandler("unblock", unblock_command))
     app.add_handler(CommandHandler("unblock_last", unblock_last_command))
     app.add_handler(CommandHandler("generate", generate_command))
+    app.add_handler(CommandHandler("tiktok", tiktok_command))
+    app.add_handler(CommandHandler("tiktok_last", tiktok_last_command))
 
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(
