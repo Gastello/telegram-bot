@@ -292,7 +292,7 @@ def build_final_preview_keyboard(moderation_id: int) -> InlineKeyboardMarkup:
 
 
 def build_tiktok_variant_keyboard(
-    appid: str,
+    moderation_id: int,
     variant_key: str,
     single_variant: bool,
 ) -> InlineKeyboardMarkup:
@@ -301,19 +301,19 @@ def build_tiktok_variant_keyboard(
             [
                 InlineKeyboardButton(
                     "✅ Обрати цей варіант",
-                    callback_data=f"choose_tiktok_variant|{appid}|{variant_key}",
+                    callback_data=f"choose_tiktok_variant|{moderation_id}|{variant_key}",
                 )
             ],
             [
                 InlineKeyboardButton(
                     "📤 Своє фото",
-                    callback_data=f"upload_tiktok_custom|{appid}",
+                    callback_data=f"upload_tiktok_custom|{moderation_id}",
                 )
             ],
             [
                 InlineKeyboardButton(
                     "❌ Reject",
-                    callback_data=f"reject_tiktok|{appid}",
+                    callback_data=f"reject_tiktok|{moderation_id}",
                 ),
             ],
         ])
@@ -322,7 +322,7 @@ def build_tiktok_variant_keyboard(
         [
             InlineKeyboardButton(
                 "✅ Обрати цей варіант",
-                callback_data=f"choose_tiktok_variant|{appid}|{variant_key}",
+                callback_data=f"choose_tiktok_variant|{moderation_id}|{variant_key}",
             )
         ]
     ])
@@ -742,7 +742,7 @@ def generate_tiktok_variants(deal: dict, moderation_id: int) -> None:
             image_path = item["image_path"]
 
             keyboard = build_tiktok_variant_keyboard(
-                appid=appid,
+                moderation_id=moderation_id,
                 variant_key=variant_key,
                 single_variant=single_variant,
             )
@@ -846,7 +846,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             await _safe_edit_status(query, "⚠️ No TikTok variant selected")
             return
 
-        appid = parts[1]
+        moderation_id = int(parts[1])
         variant_key = parts[2]
         
         chat_id = query.message.chat_id if query.message else None
@@ -858,48 +858,47 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         try:
             if query.message.photo:
                 await query.edit_message_caption(
-                    caption=f"✅ Обрано варіант {variant_key} для TikTok · appid {appid}",
+                    caption=f"✅ Обрано варіант {variant_key} для TikTok",
                     reply_markup=None
                 )
             else:
                 await query.edit_message_text(
-                    text=f"✅ Обрано варіант {variant_key} для TikTok · appid {appid}",
+                    text=f"✅ Обрано варіант {variant_key} для TikTok",
                     reply_markup=None
                 )
         except Exception as e:
             print(f"[TIKTOK SELECT ERROR] {e}")
 
-        # Clean up other TikTok variant messages for this appid
-        moderation_item = get_moderation_item_by_appid(appid)
+        # Clean up other TikTok variant messages
+        await cleanup_tiktok_variants(
+            context,
+            moderation_id,
+            keep_message_id=query.message.message_id,
+        )
+
+        # Set selected image
+        moderation_item = get_moderation_item(moderation_id)
         if moderation_item:
-            await cleanup_tiktok_variants(
-                context,
-                moderation_item["id"],
-                keep_message_id=query.message.message_id,
+            image_path = get_generated_image_path(
+                moderation_item["title"],
+                moderation_item["appid"],
+                f"tiktok_variant_{variant_key}",
             )
-        else:
+            set_selected_image(moderation_id, variant_key, image_path)
             print(f"[TIKTOK CLEANUP WARN] moderation item not found for appid={appid}")
 
         return
 
     if action == "upload_tiktok_custom":
         if len(parts) < 2:
-            await _safe_edit_status(query, "⚠️ No appid for TikTok custom upload")
+            await _safe_edit_status(query, "⚠️ No moderation_id for TikTok custom upload")
             return
 
-        appid = parts[1]
+        moderation_id = int(parts[1])
         chat_id = query.message.chat_id if query.message else None
         if chat_id is None or chat_id != MOD_CHAT_ID:
             await _safe_edit_status(query, "⚠️ TikTok custom upload works only in moderation chat")
             return
-
-        # Get moderation item by appid
-        moderation_item = get_moderation_item_by_appid(appid)
-        if not moderation_item:
-            await _safe_edit_status(query, f"⚠️ No moderation item found for appid {appid}")
-            return
-
-        moderation_id = moderation_item['id']
 
         # Clean up variant messages
         await cleanup_tiktok_variants(context, moderation_id, keep_message_id=None)
@@ -909,7 +908,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
         prompt = await context.bot.send_message(
             chat_id=chat_id,
-            text=f"Надішли своє фото для TikTok appid {appid} reply-ом НА ЦЕ повідомлення."
+            text=f"Надішли своє фото для TikTok reply-ом НА ЦЕ повідомлення."
         )
 
         set_upload_request_message_id(moderation_id, prompt.message_id)
@@ -919,25 +918,25 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     if action == "reject_tiktok":
         if len(parts) < 2:
-            await _safe_edit_status(query, "⚠️ No appid for TikTok reject")
+            await _safe_edit_status(query, "⚠️ No moderation_id for TikTok reject")
             return
 
-        appid = parts[1]
+        moderation_id = int(parts[1])
         chat_id = query.message.chat_id if query.message else None
         if chat_id is None or chat_id != MOD_CHAT_ID:
             await _safe_edit_status(query, "⚠️ TikTok reject works only in moderation chat")
             return
 
-        # Get moderation item by appid to get title
-        moderation_item = get_moderation_item_by_appid(appid)
-        title = moderation_item['title'] if moderation_item else f"appid_{appid}"
+        # Get moderation item to get title
+        moderation_item = get_moderation_item(moderation_id)
+        title = moderation_item['title'] if moderation_item else f"moderation_id_{moderation_id}"
 
-        # Clean up all TikTok variant messages for this appid
-        await cleanup_tiktok_variants(context, moderation_item['id'], keep_message_id=None)
+        # Clean up all TikTok variant messages
+        await cleanup_tiktok_variants(context, moderation_id, keep_message_id=None)
 
         await context.bot.send_message(
             chat_id=chat_id,
-            text=f"❌ TikTok генерація для appid {appid} відхилена"
+            text=f"❌ TikTok генерація відхилена"
         )
 
         # Clean up generated files
