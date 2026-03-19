@@ -32,9 +32,10 @@ REVIEWS_URL = "https://store.steampowered.com/appreviews"
 
 COUNTRY_CODE = "ua"
 
-DISCOUNT_THRESHOLD = 30
+DISCOUNT_THRESHOLD = 40
 MIN_TOTAL_REVIEWS = 1000
-MIN_REVIEW_PERCENT = 60.0
+
+MIN_REVIEW_PERCENT = 80.0
 
 MAX_WORKERS = 1
 MAX_RETRIES = 2
@@ -302,6 +303,14 @@ def build_base_deal(appid: str, data: dict[str, Any]) -> dict[str, Any] | None:
     if not price:
         return None
 
+    screenshots = []
+    if data.get("screenshots"):
+        screenshots = [
+            img.get("path_full", "")
+            for img in data.get("screenshots", [])[:5]
+            if img.get("path_full")
+        ]
+
     return {
         "appid": appid,
         "title": data.get("name", "Unknown"),
@@ -311,6 +320,7 @@ def build_base_deal(appid: str, data: dict[str, Any]) -> dict[str, Any] | None:
         "initial_price": price.get("initial", 0) / 100,
         "currency": price.get("currency", ""),
         "header_image": data.get("header_image", ""),
+        "screenshots": screenshots,
         "original_description": data.get("short_description", "") or "",
     }
 

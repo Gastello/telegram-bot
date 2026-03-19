@@ -166,14 +166,19 @@ def cover_crop(image: Image.Image, target_width: int, target_height: int) -> Ima
     return resized.crop((left, top, right, bottom))
 
 
-def get_background_candidates(appid: str, header_image_url: str = "") -> list[str]:
-    return [
+def get_background_candidates(appid: str, header_image_url: str = "", screenshots: list[str] | None = None) -> list[str]:
+    candidates = [
         f"https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/{appid}/page_bg_raw.jpg",
         f"https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/{appid}/library_hero.jpg",
         header_image_url,
         f"https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/{appid}/capsule_616x353.jpg",
         f"https://cdn.cloudflare.steamstatic.com/steam/apps/{appid}/header.jpg",
     ]
+
+    if screenshots:
+        candidates.extend([s for s in screenshots if s and s.strip()])
+
+    return candidates
 
 
 def get_background_url_by_source(appid: str, source_type: str, header_image_url: str = "", screenshots: list[str] | None = None) -> str:
@@ -210,7 +215,7 @@ def load_background(
         return Image.open(custom_background_path).convert("RGBA")
 
     if source_type == "auto":
-        candidates = [u for u in get_background_candidates(appid, header_image_url) if u and u.strip()]
+        candidates = [u for u in get_background_candidates(appid, header_image_url, screenshots) if u and u.strip()]
         for url in candidates:
             image = download_image(url)
             if image is not None:

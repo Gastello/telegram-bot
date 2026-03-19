@@ -143,6 +143,7 @@ async def _send_to_moderation_async(deal: dict) -> None:
                 header_image_url=deal.get("header_image", ""),
                 sale_end_text=deal.get("sale_end_text", ""),
                 source_type=source_type,
+                screenshots=deal.get("screenshots", []),
                 output_path=get_generated_image_path(
                     deal["title"],
                     deal["appid"],
