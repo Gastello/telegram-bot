@@ -1034,11 +1034,19 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         
         update_moderation_state(moderation_id, "waiting_custom_text")
 
-        current_text = build_post_text(item)
+        current_quote = item.get("custom_text")
+        if not current_quote:
+            current_quote = item.get("original_description") or item.get("short_description") or ""
 
+        # Показуємо quote в monospace для зручного копіювання
         prompt = await context.bot.send_message(
             chat_id=chat_id,
-            text=f"Поточний текст поста:\n\n{current_text}\n\nНадішли новий текст reply-ом НА ЦЕ повідомлення."
+            text=(
+                "Поточний опис (quote):\n\n"
+                f"<pre>{current_quote or '(порожньо)'}</pre>\n\n"
+                "Надішли лише новий текст для quote, reply-ом НА ЦЕ повідомлення."
+            ),
+            parse_mode="HTML"
         )
 
         set_upload_request_message_id(moderation_id, prompt.message_id)

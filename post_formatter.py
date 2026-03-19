@@ -36,14 +36,14 @@ def translate_text(appid: str, text: str) -> str:
 
 
 def build_post_text(item: dict) -> str:
-    if item.get("custom_text"):
-        return item["custom_text"]
-
     title = escape_html(item["title"])
 
-    original_description = item.get("original_description") or item.get("short_description") or ""
-    translated_description = item.get("translated_description") or translate_text(item["appid"], original_description)
-    description = escape_html(translated_description)
+    if item.get("custom_text"):
+        description_text = escape_html(item["custom_text"])
+    else:
+        original_description = item.get("original_description") or item.get("short_description") or ""
+        translated_description = item.get("translated_description") or translate_text(item["appid"], original_description)
+        description_text = escape_html(translated_description)
 
     steam_url = f"https://store.steampowered.com/app/{item['appid']}"
     final_price = format_price(item["final_price"], item["currency"])
@@ -62,8 +62,8 @@ def build_post_text(item: dict) -> str:
 
     text += "\n"
 
-    if description:
-        text += f"<blockquote>{description}</blockquote>\n\n"
+    if description_text:
+        text += f"<blockquote>{description_text}</blockquote>\n\n"
 
     text += (
         f'🔗 <a href="{steam_url}">Купити у Steam</a>\n\n'
