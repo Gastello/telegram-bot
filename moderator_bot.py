@@ -489,6 +489,10 @@ async def send_final_preview(
     item: dict,
     chat_id: int,
 ) -> None:
+    # Перед новим прев'ю обов'язково видаляємо попередні модераційні повідомлення
+    # (варіанти + старі прев'ю). Це уникне ситуацій зі «старими кнопками».
+    await cleanup_moderation_chat(context, item["id"])
+
     text = build_post_text(item)
     image_path = item.get("selected_image_path", "")
 
@@ -1012,8 +1016,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             await send_final_preview(context, updated_item, chat_id)
 
     elif action == "upload_custom":
-        await cleanup_moderation_chat(context, moderation_id, keep_preview=True)
-        
+        # При завантаженні власного фото видаляємо старе прев'ю щоб не лишати старі кнопки
+        await cleanup_moderation_chat(context, moderation_id)
+
         update_moderation_state(moderation_id, "waiting_custom_image")
 
         prompt = await context.bot.send_message(
