@@ -1090,6 +1090,21 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await cleanup_moderation_chat(context, moderation_id)
         cleanup_generated_files(item["title"], item["appid"])
 
+        # 🚀 AUTO TikTok generation після публікації
+        try:
+            print(f"[AUTO TIKTOK] Start for appid={item['appid']}")
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text="🎬 Генерую TikTok варіанти..."
+            )
+            threading.Thread(
+                target=generate_tiktok_for_appid,
+                args=(str(item["appid"]),),
+                daemon=True,
+            ).start()
+        except Exception as e:
+            print(f"[AUTO TIKTOK ERROR] {e}")
+
     elif action == "reject":
         update_moderation_status(moderation_id, "rejected")
         update_moderation_state(moderation_id, "rejected")
